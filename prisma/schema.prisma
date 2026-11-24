@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["barberbous"]
+}
+
+enum OrderType {
+  WALK_IN
+  BOOKING
+
+  @@schema("barberbous")
+}
+
+enum DiscountType {
+  PERCENT
+  NOMINAL
+
+  @@schema("barberbous")
+}
+
+enum PaymentMethod {
+  TUNAI
+  QRIS
+
+  @@schema("barberbous")
+}
+
+enum TransactionStatus {
+  MENUNGGU_PEMBAYARAN
+  SELESAI
+  REFUND
+
+  @@schema("barberbous")
+}
+
+enum BookingStatus {
+  HADIR
+  MENUNGGU
+  SELESAI
+  BATAL
+
+  @@schema("barberbous")
+}
+
+model Package {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  description  String
+  price        Int
+  imageUrl     String?
+  badgeColor   String        @default("#EDE0CE")
+  isActive     Boolean       @default(true)
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  bookings     Booking[]
+  transactions Transaction[]
+
+  @@schema("barberbous")
+}
+
+model Capster {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  photoUrl     String?
+  bgColor      String        @default("#C4B5E3")
+  isActive     Boolean       @default(true)
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  bookings     Booking[]
+  transactions Transaction[]
+
+  @@schema("barberbous")
+}
+
+model Voucher {
+  id            String       @id @default(cuid())
+  code          String       @unique
+  label         String
+  discountType  DiscountType
+  discountValue Int
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@schema("barberbous")
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  customerName  String
+  customerPhone String?
+  isMember      Boolean       @default(false)
+  scheduledTime String
+  bookingDate   DateTime      @default(now())
+  status        BookingStatus @default(MENUNGGU)
+  packageId     String
+  package       Package       @relation(fields: [packageId], references: [id])
+  capsterId     String
+  capster       Capster       @relation(fields: [capsterId], references: [id])
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  transactions  Transaction[]
+
+  @@schema("barberbous")
+}
+
+model Transaction {
+  id                 String            @id @default(cuid())
+  orderNumber        Int               @unique
+  orderCode          String            @unique
+  orderType          OrderType         @default(WALK_IN)
+  customerName       String            @default("Umum")
+  isMember           Boolean           @default(false)
+  packageId          String
+  package            Package           @relation(fields: [packageId], references: [id])
+  packageName        String
+  packageDescription String
+  capsterId          String
+  capster            Capster           @relation(fields: [capsterId], references: [id])
+  capsterName        String
+  bookingId          String?
+  booking            Booking?          @relation(fields: [bookingId], references: [id])
+  subtotal           Int
+  discountType       DiscountType?
+  discountValue      Int               @default(0)
+  discountAmount     Int               @default(0)
+  discountLabel      String?
+  voucherCode        String?
+  taxAmount          Int               @default(0)
+  serviceFeeAmount   Int               @default(0)
+  total              Int
+  paymentMethod      PaymentMethod
+  cashReceived       Int?
+  changeAmount       Int?
+  status             TransactionStatus @default(SELESAI)
+  notes              String?
+  cashierName        String            @default("Rehan")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@schema("barberbous")
+}
+
+model StoreSetting {
+  id                String   @id @default("default")
+  storeName         String   @default("BARBERBOUS")
+  address           String   @default("Jl. Turangga No. 12, Bandung")
+  phone             String   @default("081234567890")
+  printerName       String   @default("Epson TM-T82")
+  printerConnection String   @default("Bluetooth · Printer utama")
+  printerConnected  Boolean  @default(true)
+  paperSize         String   @default("80 mm")
+  autoPrintReceipt  Boolean  @default(true)
+  receiptFooter     String   @default("Terima kasih, sampai jumpa!")
+  taxEnabled        Boolean  @default(false)
+  taxRate           Int      @default(10)
+  serviceFeeEnabled Boolean  @default(false)
+  serviceFeeAmount  Int      @default(0)
+  priceIncludesTax  Boolean  @default(false)
+  tunaiEnabled      Boolean  @default(true)
+  qrisEnabled       Boolean  @default(true)
+  qrisMerchantName  String   @default("BARBERBOUS BANDUNG")
+  updatedAt         DateTime @updatedAt
+
+  @@schema("barberbous")
+}
+
+model StaffUser {
+  id           String   @id @default(cuid())
+  name         String
+  username     String   @unique
+  passwordHash String
+  email        String?
+  role         String   @default("Kasir")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@schema("barberbous")
+}
