@@ -169,10 +169,12 @@ export function SetelanClient({
 
   return (
     <>
-      {/* Inner Setelan Menu */}
-      <aside className="w-[220px] shrink-0 bg-white border-r border-[#E5E7EB] p-5">
-        <h2 className="text-lg font-bold text-[#0F172A] mb-4">Setelan</h2>
-        <nav className="space-y-1">
+      {/* Inner Setelan Menu (Horizontal tab strip on < lg; vertical sidebar on lg+) */}
+      <aside className="w-full lg:w-[220px] shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-[#E5E7EB] p-4 lg:p-5">
+        <h2 className="text-base lg:text-lg font-bold text-[#0F172A] mb-3 lg:mb-4">
+          Setelan
+        </h2>
+        <nav className="flex lg:flex-col gap-1.5 lg:gap-1 overflow-x-auto pb-1 lg:pb-0">
           {(
             [
               { id: "umum", label: "Umum" },
@@ -185,10 +187,10 @@ export function SetelanClient({
               key={item.id}
               type="button"
               onClick={() => setSection(item.id)}
-              className={`w-full text-left px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+              className={`shrink-0 lg:w-full text-left px-3.5 lg:px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
                 section === item.id
-                  ? "bg-[#F4F4F5] font-semibold text-[#0F172A]"
-                  : "text-[#64748B] font-medium hover:bg-[#FAFAFA] hover:text-[#0F172A]"
+                  ? "bg-[#0F172A] text-white lg:bg-[#F4F4F5] lg:text-[#0F172A] font-semibold"
+                  : "text-[#64748B] font-medium bg-[#F8FAFC] lg:bg-transparent hover:bg-[#FAFAFA] hover:text-[#0F172A]"
               }`}
             >
               {item.label}
@@ -198,7 +200,7 @@ export function SetelanClient({
       </aside>
 
       {/* Main Settings Content */}
-      <main className="flex-1 bg-[#FAFAFA] p-8 overflow-y-auto min-w-0">
+      <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
         {section === "umum" && (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -505,7 +507,7 @@ export function SetelanClient({
 
             <form
               onSubmit={handleAddStaff}
-              className="bg-white border border-[#E5E7EB] rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_110px_auto] gap-2.5 items-end"
+              className="bg-white border border-[#E5E7EB] rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_110px_auto] gap-2.5 items-end"
             >
               <div>
                 <label className="block text-[11px] text-[#64748B] mb-1">Nama</label>
@@ -562,8 +564,8 @@ export function SetelanClient({
               </button>
             </form>
 
-            <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
+              <table className="w-full min-w-[460px] text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] text-[#64748B]">
                     <th className="py-3 px-4">Nama</th>

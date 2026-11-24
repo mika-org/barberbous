@@ -115,9 +115,9 @@ export function AppShell({
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-white text-[#0F172A]">
-      {/* Persistent Left Navigation Rail */}
-      <aside className="w-[74px] shrink-0 bg-white border-r border-[#E5E7EB] flex flex-col items-center justify-between py-4 select-none z-20">
+    <div className="flex flex-col md:flex-row h-screen w-full overflow-hidden bg-white text-[#0F172A]">
+      {/* Persistent Left Navigation Rail (Tablet & Desktop) */}
+      <aside className="hidden md:flex w-[74px] shrink-0 bg-white border-r border-[#E5E7EB] flex-col items-center justify-between py-4 select-none z-20">
         <div className="flex flex-col items-center gap-5 w-full">
           <Link href="/" className="hover:opacity-90 transition">
             <BarberbousLogo className="w-11 h-11" />
@@ -181,7 +181,40 @@ export function AppShell({
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex min-w-0 h-full overflow-hidden">{children}</div>
+      <div className="flex-1 flex flex-col lg:flex-row min-w-0 min-h-0 h-full overflow-hidden pb-[60px] md:pb-0">
+        {children}
+      </div>
+
+      {/* Mobile Bottom Navigation (< md) */}
+      <nav className="flex md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] px-2 items-center justify-around z-30 select-none">
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`px-2.5 py-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                isActive ? "bg-[#0F172A] text-white" : "text-[#64748B]"
+              }`}
+            >
+              <Icon className="w-4 h-4" strokeWidth={1.9} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={handleLogout}
+          title="Keluar"
+          className="px-2 py-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-[#DC2626] cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" strokeWidth={1.9} />
+          <span>Keluar</span>
+        </button>
+      </nav>
     </div>
   );
 }

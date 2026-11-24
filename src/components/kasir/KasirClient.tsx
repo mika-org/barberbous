@@ -11,6 +11,8 @@ import {
   Pencil,
   Check,
   Plus,
+  ShoppingBag,
+  X,
 } from "lucide-react";
 import { formatDateHeader, formatRupiah, getInitials } from "@/lib/format";
 import { DiskonModal, type DiscountState } from "./DiskonModal";
@@ -97,6 +99,7 @@ export function KasirClient({
   const [showDiskonModal, setShowDiskonModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [completedReceipt, setCompletedReceipt] = useState<ReceiptTransaction | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -278,9 +281,9 @@ export function KasirClient({
   return (
     <>
       {/* Main Left Catalog */}
-      <main className="flex-1 bg-[#FAFAFA] p-6 overflow-y-auto min-w-0">
+      <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-5 lg:p-6 overflow-y-auto min-w-0 pb-24 lg:pb-6">
         {/* Top Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
           <div>
             <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
               {orderTab === "BOOKING" ? "Kasir" : setting.storeName}
@@ -290,7 +293,7 @@ export function KasirClient({
             </p>
           </div>
 
-          <div className="relative w-72">
+          <div className="relative w-full sm:w-64 lg:w-72">
             <Search className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -309,7 +312,7 @@ export function KasirClient({
             <span>Pilih Paket</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mt-3.5">
             {filteredPackages.map((pkg) => {
               const isSelected = pkg.id === selectedPackage?.id;
               return (
@@ -367,7 +370,7 @@ export function KasirClient({
             <span>Pilih Capster</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mt-3.5">
             {filteredCapsters.map((cap) => {
               const isSelected = cap.id === selectedCapster?.id;
               return (
@@ -413,11 +416,23 @@ export function KasirClient({
         </section>
       </main>
 
-      {/* Right Order Cart Sidebar */}
-      <aside className="w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] flex flex-col justify-between p-5 overflow-y-auto">
+      {/* Right Order Cart Sidebar (Desktop & Tablet Landscape lg+; slide-over drawer on < lg) */}
+      {mobileCartOpen && (
+        <div
+          onClick={() => setMobileCartOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      )}
+      <aside
+        className={`${
+          mobileCartOpen
+            ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
+            : "hidden"
+        } lg:static lg:flex lg:w-[330px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] flex-col justify-between p-5 overflow-y-auto`}
+      >
         <div>
           {/* Order Title */}
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="text-base font-bold text-[#0F172A]">
                 Transaksi {orderCode}
@@ -431,14 +446,24 @@ export function KasirClient({
                     })} · 1 layanan`}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleResetOrder}
-              title="Reset pesanan"
-              className="w-8 h-8 rounded-lg border border-[#E5E7EB] hover:bg-[#F8FAFC] flex items-center justify-center text-[#64748B] cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleResetOrder}
+                title="Reset pesanan"
+                className="w-8 h-8 rounded-lg border border-[#E5E7EB] hover:bg-[#F8FAFC] flex items-center justify-center text-[#64748B] cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileCartOpen(false)}
+                aria-label="Tutup panel pesanan"
+                className="lg:hidden w-8 h-8 rounded-lg border border-[#E5E7EB] hover:bg-[#F8FAFC] flex items-center justify-center text-[#64748B] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Walk-in vs Booking Tabs */}
@@ -652,7 +677,10 @@ export function KasirClient({
           <button
             type="button"
             disabled={!selectedPackage || !selectedCapster}
-            onClick={() => setShowPaymentModal(true)}
+            onClick={() => {
+              setMobileCartOpen(false);
+              setShowPaymentModal(true);
+            }}
             className="mt-3.5 w-full bg-[#15803D] hover:bg-[#166534] text-white rounded-xl px-4 py-3 flex items-center justify-between font-semibold text-sm transition cursor-pointer disabled:opacity-50"
           >
             <span>Lanjut Transaksi</span>
@@ -660,6 +688,46 @@ export function KasirClient({
           </button>
         </div>
       </aside>
+
+      {/* Sticky Bottom Checkout Bar for Tablet Portrait & Mobile (< lg) */}
+      <div className="lg:hidden fixed bottom-[60px] md:bottom-0 left-0 md:left-[74px] right-0 z-20 bg-white border-t border-[#E5E7EB] px-4 py-2.5 flex items-center justify-between gap-3 shadow-md">
+        <button
+          type="button"
+          onClick={() => setMobileCartOpen(true)}
+          className="flex items-center gap-3 text-left min-w-0 cursor-pointer"
+        >
+          <span className="w-9 h-9 rounded-xl bg-[#F4F4F5] flex items-center justify-center text-[#0F172A] shrink-0">
+            <ShoppingBag className="w-4 h-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-[#0F172A] truncate">
+              {orderCode} · {selectedPackage?.name ?? "-"} · {selectedCapster?.name ?? "-"}
+            </p>
+            <p className="text-[11px] text-[#64748B] truncate">
+              {orderTab === "BOOKING" ? "Booking" : isMember ? "Member (-10%)" : "Walk-in"} ·{" "}
+              <span className="font-semibold text-[#0F172A]">{formatRupiah(total)}</span>
+            </p>
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileCartOpen(true)}
+            className="px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC] cursor-pointer"
+          >
+            Detail
+          </button>
+          <button
+            type="button"
+            disabled={!selectedPackage || !selectedCapster}
+            onClick={() => setShowPaymentModal(true)}
+            className="px-4 py-2 rounded-xl bg-[#15803D] hover:bg-[#166534] text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+          >
+            Bayar
+          </button>
+        </div>
+      </div>
 
       {/* Modals */}
       {showDiskonModal && (

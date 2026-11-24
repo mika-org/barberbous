@@ -205,7 +205,7 @@ export function LaporanClient({
   );
 
   return (
-    <main className="flex-1 bg-[#FAFAFA] p-6 overflow-y-auto min-w-0">
+    <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-5 lg:p-6 overflow-y-auto min-w-0">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -275,7 +275,7 @@ export function LaporanClient({
           )}
         </div>
 
-        <div className="bg-[#F4F4F5] p-1 rounded-xl inline-grid grid-cols-3 gap-1">
+        <div className="bg-[#F4F4F5] p-1 rounded-xl grid sm:inline-grid grid-cols-3 gap-1 w-full sm:w-auto">
           {(
             [
               { id: "overall", label: "Overall" },
@@ -287,7 +287,7 @@ export function LaporanClient({
               key={tab.id}
               type="button"
               onClick={() => setView(tab.id)}
-              className={`px-4 py-1.5 rounded-lg text-xs transition cursor-pointer ${
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs transition cursor-pointer ${
                 view === tab.id
                   ? "bg-white text-[#0F172A] font-semibold shadow-2xs"
                   : "text-[#64748B] font-medium hover:text-[#0F172A]"
@@ -367,7 +367,7 @@ export function LaporanClient({
       ) : view === "overall" ? (
         <div className="space-y-4 mt-5">
           {/* 4 KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
               <p className="text-xs text-[#64748B]">Penjualan</p>
               <p className="text-2xl font-bold text-[#0F172A] mt-1.5">
@@ -417,28 +417,30 @@ export function LaporanClient({
                 </span>
               </div>
 
-              <div className="mt-8 h-56 flex items-end justify-between gap-2.5 px-1">
-                {report.hourly.map((bar) => {
-                  const isPeak = bar.hour === report.peakHour.hour && bar.amount > 0;
-                  const pct = Math.max(8, Math.round((bar.amount / maxHourly) * 100));
-                  return (
-                    <div
-                      key={bar.hour}
-                      className="flex-1 flex flex-col items-center justify-end h-full"
-                    >
-                      <span className="text-[10px] font-medium text-[#64748B] mb-1.5">
-                        {bar.amountThousands}
-                      </span>
+              <div className="mt-6 overflow-x-auto">
+                <div className="min-w-[440px] h-56 flex items-end justify-between gap-2.5 px-1">
+                  {report.hourly.map((bar) => {
+                    const isPeak = bar.hour === report.peakHour.hour && bar.amount > 0;
+                    const pct = Math.max(8, Math.round((bar.amount / maxHourly) * 100));
+                    return (
                       <div
-                        className={`w-full max-w-[34px] rounded-t-lg transition-all ${
-                          isPeak ? "bg-[#0F172A]" : "bg-[#D6D3D1]"
-                        }`}
-                        style={{ height: `${bar.amount > 0 ? pct : 6}%` }}
-                      />
-                      <span className="text-[10px] text-[#64748B] mt-2">{bar.hour}</span>
-                    </div>
-                  );
-                })}
+                        key={bar.hour}
+                        className="flex-1 flex flex-col items-center justify-end h-full"
+                      >
+                        <span className="text-[10px] font-medium text-[#64748B] mb-1.5">
+                          {bar.amountThousands}
+                        </span>
+                        <div
+                          className={`w-full max-w-[34px] rounded-t-lg transition-all ${
+                            isPeak ? "bg-[#0F172A]" : "bg-[#D6D3D1]"
+                          }`}
+                          style={{ height: `${bar.amount > 0 ? pct : 6}%` }}
+                        />
+                        <span className="text-[10px] text-[#64748B] mt-2">{bar.hour}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -527,8 +529,9 @@ export function LaporanClient({
               {rangeText} · {report.packageStats.length} paket aktif
             </p>
 
-            <table className="w-full text-left border-collapse mt-4">
-              <thead>
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full min-w-[520px] text-left border-collapse">
+                <thead>
                 <tr className="border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
                   <th className="py-2.5">Paket</th>
                   <th className="py-2.5 text-right">Terjual</th>
@@ -582,10 +585,11 @@ export function LaporanClient({
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         ) : (
           <div className="space-y-4 mt-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
                 <p className="text-xs text-[#64748B]">
                   Pendapatan {report.packageDetail.package.name}
@@ -635,57 +639,59 @@ export function LaporanClient({
                 Paket {report.packageDetail.package.name} · {rangeText}
               </p>
 
-              <table className="w-full text-left border-collapse mt-4">
-                <thead>
-                  <tr className="border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
-                    <th className="py-2.5">Capster</th>
-                    <th className="py-2.5 text-right">Terjual</th>
-                    <th className="py-2.5 text-right">Pendapatan</th>
-                    <th className="py-2.5 pl-6">Kontribusi</th>
-                    <th className="py-2.5 text-right"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9] text-xs">
-                  {report.packageDetail.byCapster.map((c) => (
-                    <tr key={c.id}>
-                      <td className="py-3.5">
-                        <div className="flex items-center gap-3">
-                          <span className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#9A6B3B] font-bold flex items-center justify-center">
-                            {c.name.slice(0, 1).toUpperCase()}
-                          </span>
-                          <span className="font-semibold text-[#0F172A]">{c.name}</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 text-right text-[#0F172A]">{c.sold}</td>
-                      <td className="py-3.5 text-right text-[#0F172A]">
-                        {formatRupiah(c.revenue)}
-                      </td>
-                      <td className="py-3.5 pl-6 w-48">
-                        <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-[#0F172A]"
-                            style={{ width: `${c.contributionPct}%` }}
-                          />
-                        </div>
-                      </td>
-                      <td className="py-3.5 text-right text-[#64748B] font-medium w-12">
-                        {c.contributionPct}%
-                      </td>
+              <div className="overflow-x-auto mt-4">
+                <table className="w-full min-w-[520px] text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
+                      <th className="py-2.5">Capster</th>
+                      <th className="py-2.5 text-right">Terjual</th>
+                      <th className="py-2.5 text-right">Pendapatan</th>
+                      <th className="py-2.5 pl-6">Kontribusi</th>
+                      <th className="py-2.5 text-right"></th>
                     </tr>
-                  ))}
-                  <tr className="bg-[#FAFAFA] font-bold text-[#0F172A]">
-                    <td className="py-3.5">Total</td>
-                    <td className="py-3.5 text-right">{report.packageDetail.sold}</td>
-                    <td className="py-3.5 text-right">
-                      {formatRupiah(report.packageDetail.revenue)}
-                    </td>
-                    <td className="py-3.5 pl-6">
-                      <div className="h-2 rounded-full bg-[#0F172A]" />
-                    </td>
-                    <td className="py-3.5 text-right">100%</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9] text-xs">
+                    {report.packageDetail.byCapster.map((c) => (
+                      <tr key={c.id}>
+                        <td className="py-3.5">
+                          <div className="flex items-center gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#9A6B3B] font-bold flex items-center justify-center">
+                              {c.name.slice(0, 1).toUpperCase()}
+                            </span>
+                            <span className="font-semibold text-[#0F172A]">{c.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 text-right text-[#0F172A]">{c.sold}</td>
+                        <td className="py-3.5 text-right text-[#0F172A]">
+                          {formatRupiah(c.revenue)}
+                        </td>
+                        <td className="py-3.5 pl-6 w-32 sm:w-48">
+                          <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-[#0F172A]"
+                              style={{ width: `${c.contributionPct}%` }}
+                            />
+                          </div>
+                        </td>
+                        <td className="py-3.5 text-right text-[#64748B] font-medium w-12">
+                          {c.contributionPct}%
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-[#FAFAFA] font-bold text-[#0F172A]">
+                      <td className="py-3.5">Total</td>
+                      <td className="py-3.5 text-right">{report.packageDetail.sold}</td>
+                      <td className="py-3.5 text-right">
+                        {formatRupiah(report.packageDetail.revenue)}
+                      </td>
+                      <td className="py-3.5 pl-6">
+                        <div className="h-2 rounded-full bg-[#0F172A]" />
+                      </td>
+                      <td className="py-3.5 text-right">100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )
@@ -696,65 +702,67 @@ export function LaporanClient({
             {rangeText} · {report.capsterStats.length} capster
           </p>
 
-          <table className="w-full text-left border-collapse mt-4">
-            <thead>
-              <tr className="border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
-                <th className="py-2.5">Capster</th>
-                <th className="py-2.5 text-right">Layanan selesai</th>
-                <th className="py-2.5 text-right">Pendapatan</th>
-                <th className="py-2.5 pl-6">Kontribusi</th>
-                <th className="py-2.5 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F1F5F9] text-xs">
-              {report.capsterStats.map((item) => (
-                <tr
-                  key={item.id}
-                  onClick={() => setSelectedCapsterId(item.id)}
-                  className="hover:bg-[#FAFAFA] cursor-pointer"
-                >
-                  <td className="py-3.5">
-                    <div className="flex items-center gap-3">
-                      <span className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#9A6B3B] font-bold flex items-center justify-center">
-                        {item.name.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="font-semibold text-[#0F172A]">{item.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-3.5 text-right text-[#0F172A]">{item.sold}</td>
-                  <td className="py-3.5 text-right text-[#0F172A]">
-                    {formatRupiah(item.revenue)}
-                  </td>
-                  <td className="py-3.5 pl-6 w-48">
-                    <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#0F172A]"
-                        style={{ width: `${item.contributionPct}%` }}
-                      />
-                    </div>
-                  </td>
-                  <td className="py-3.5 text-right text-[#64748B] font-medium w-12">
-                    {item.contributionPct}%
-                  </td>
+          <div className="overflow-x-auto mt-4">
+            <table className="w-full min-w-[520px] text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
+                  <th className="py-2.5">Capster</th>
+                  <th className="py-2.5 text-right">Layanan selesai</th>
+                  <th className="py-2.5 text-right">Pendapatan</th>
+                  <th className="py-2.5 pl-6">Kontribusi</th>
+                  <th className="py-2.5 text-right"></th>
                 </tr>
-              ))}
-              <tr className="bg-[#FAFAFA] font-bold text-[#0F172A]">
-                <td className="py-3.5">Total</td>
-                <td className="py-3.5 text-right">{report.summary.totalCount}</td>
-                <td className="py-3.5 text-right">
-                  {formatRupiah(report.summary.totalRevenue)}
-                </td>
-                <td className="py-3.5 pl-6">
-                  <div className="h-2 rounded-full bg-[#0F172A]" />
-                </td>
-                <td className="py-3.5 text-right">100%</td>
-              </tr>
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[#F1F5F9] text-xs">
+                {report.capsterStats.map((item) => (
+                  <tr
+                    key={item.id}
+                    onClick={() => setSelectedCapsterId(item.id)}
+                    className="hover:bg-[#FAFAFA] cursor-pointer"
+                  >
+                    <td className="py-3.5">
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#9A6B3B] font-bold flex items-center justify-center">
+                          {item.name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="font-semibold text-[#0F172A]">{item.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 text-right text-[#0F172A]">{item.sold}</td>
+                    <td className="py-3.5 text-right text-[#0F172A]">
+                      {formatRupiah(item.revenue)}
+                    </td>
+                    <td className="py-3.5 pl-6 w-32 sm:w-48">
+                      <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[#0F172A]"
+                          style={{ width: `${item.contributionPct}%` }}
+                        />
+                      </div>
+                    </td>
+                    <td className="py-3.5 text-right text-[#64748B] font-medium w-12">
+                      {item.contributionPct}%
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#FAFAFA] font-bold text-[#0F172A]">
+                  <td className="py-3.5">Total</td>
+                  <td className="py-3.5 text-right">{report.summary.totalCount}</td>
+                  <td className="py-3.5 text-right">
+                    {formatRupiah(report.summary.totalRevenue)}
+                  </td>
+                  <td className="py-3.5 pl-6">
+                    <div className="h-2 rounded-full bg-[#0F172A]" />
+                  </td>
+                  <td className="py-3.5 text-right">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="space-y-4 mt-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
               <p className="text-xs text-[#64748B]">
                 Pendapatan {report.capsterDetail.capster.name}
@@ -802,8 +810,9 @@ export function LaporanClient({
               Capster {report.capsterDetail.capster.name} · {rangeText}
             </p>
 
-            <table className="w-full text-left border-collapse mt-4">
-              <thead>
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full min-w-[520px] text-left border-collapse">
+                <thead>
                 <tr className="border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
                   <th className="py-2.5">Paket</th>
                   <th className="py-2.5 text-right">Terjual</th>
@@ -853,6 +862,7 @@ export function LaporanClient({
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}

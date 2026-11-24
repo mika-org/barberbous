@@ -40,6 +40,7 @@ export function ProdukClient({
   const [capsters, setCapsters] = useState<ProductCapster[]>(initialCapsters);
   const [search, setSearch] = useState("");
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [drawer, setDrawer] = useState<DrawerMode>(
     initialPackages[0] ? { kind: "edit-package", item: initialPackages[0] } : null
   );
@@ -63,6 +64,7 @@ export function ProdukClient({
 
   const openEditPackage = (pkg: ProductPackage) => {
     setDrawer({ kind: "edit-package", item: pkg });
+    setMobileDrawerOpen(true);
     setNameInput(pkg.name);
     setDescInput(pkg.description);
     setPriceInput(String(pkg.price));
@@ -74,6 +76,7 @@ export function ProdukClient({
   const openNewPackage = () => {
     setShowAddMenu(false);
     setDrawer({ kind: "new-package" });
+    setMobileDrawerOpen(true);
     setNameInput("");
     setDescInput("Haircut, Hair tonic, Styling");
     setPriceInput("35000");
@@ -84,6 +87,7 @@ export function ProdukClient({
 
   const openEditCapster = (cap: ProductCapster) => {
     setDrawer({ kind: "edit-capster", item: cap });
+    setMobileDrawerOpen(true);
     setNameInput(cap.name);
     setImageInput(cap.photoUrl);
     setBgColorInput(cap.bgColor);
@@ -94,6 +98,7 @@ export function ProdukClient({
   const openNewCapster = () => {
     setShowAddMenu(false);
     setDrawer({ kind: "new-capster" });
+    setMobileDrawerOpen(true);
     setNameInput("");
     setImageInput(null);
     setBgColorInput("#C4B5E3");
@@ -286,9 +291,9 @@ export function ProdukClient({
 
   return (
     <>
-      <main className="flex-1 bg-[#FAFAFA] p-6 overflow-y-auto min-w-0">
+      <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-5 lg:p-6 overflow-y-auto min-w-0">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
           <div>
             <h1 className="text-xl font-bold text-[#0F172A]">Produk</h1>
             <p className="text-xs text-[#64748B] mt-0.5">
@@ -296,8 +301,8 @@ export function ProdukClient({
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 relative">
-            <div className="relative w-64">
+          <div className="flex flex-wrap items-center gap-2.5 relative w-full sm:w-auto">
+            <div className="relative flex-1 sm:flex-initial sm:w-64">
               <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -462,9 +467,21 @@ export function ProdukClient({
         </section>
       </main>
 
-      {/* Right Edit / Add Drawer */}
+      {/* Right Edit / Add Drawer (Desktop lg+; slide-over on < lg) */}
+      {drawer && mobileDrawerOpen && (
+        <div
+          onClick={() => setMobileDrawerOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      )}
       {drawer && (
-        <aside className="w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex flex-col justify-between overflow-y-auto">
+        <aside
+          className={`${
+            mobileDrawerOpen
+              ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
+              : "hidden"
+          } lg:static lg:flex lg:w-[330px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
+        >
           <form onSubmit={handleSave} className="flex-1 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-5">
@@ -479,7 +496,10 @@ export function ProdukClient({
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setDrawer(null)}
+                  onClick={() => {
+                    setMobileDrawerOpen(false);
+                    setDrawer(null);
+                  }}
                   className="w-8 h-8 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
                 >
                   <X className="w-4 h-4" />

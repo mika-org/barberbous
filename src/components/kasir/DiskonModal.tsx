@@ -135,7 +135,7 @@ export function DiskonModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-[440px] shadow-2xl p-6">
+      <div className="bg-white rounded-2xl w-full max-w-[440px] max-h-[92vh] overflow-y-auto shadow-2xl p-5 sm:p-6">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-[#0F172A]">Diskon &amp; voucher</h2>

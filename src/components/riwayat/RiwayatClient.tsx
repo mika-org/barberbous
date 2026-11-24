@@ -7,6 +7,7 @@ import {
   Printer,
   CloudDownload,
   RotateCcw,
+  X,
 } from "lucide-react";
 import { formatDateShort, formatRupiah, formatTimeHHMM } from "@/lib/format";
 import {
@@ -35,6 +36,7 @@ export function RiwayatClient({
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all">("today");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string>(initialTransactions[0]?.id ?? "");
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [updatingRefund, setUpdatingRefund] = useState(false);
 
@@ -116,9 +118,9 @@ export function RiwayatClient({
 
   return (
     <>
-      <main className="flex-1 bg-[#FAFAFA] p-6 overflow-y-auto min-w-0">
+      <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-5 lg:p-6 overflow-y-auto min-w-0">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
           <div>
             <h1 className="text-xl font-bold text-[#0F172A]">Riwayat transaksi</h1>
             <p className="text-xs text-[#64748B] mt-0.5">
@@ -126,7 +128,7 @@ export function RiwayatClient({
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
             <div className="relative">
               <Calendar className="w-3.5 h-3.5 text-[#475569] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <select
@@ -144,7 +146,7 @@ export function RiwayatClient({
               </select>
             </div>
 
-            <div className="relative w-56">
+            <div className="relative flex-1 sm:flex-initial sm:w-56">
               <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -184,8 +186,8 @@ export function RiwayatClient({
         </div>
 
         {/* Transactions Table */}
-        <div className="mt-4 bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
-          <table className="w-full text-left border-collapse">
+        <div className="mt-4 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left border-collapse">
             <thead>
               <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
                 <th className="py-3 px-4">No.</th>
@@ -213,7 +215,10 @@ export function RiwayatClient({
                   return (
                     <tr
                       key={tx.id}
-                      onClick={() => setSelectedId(tx.id)}
+                      onClick={() => {
+                        setSelectedId(tx.id);
+                        setMobileDetailOpen(true);
+                      }}
                       className={`cursor-pointer transition ${
                         isSelected ? "bg-[#F8FAFC]" : "hover:bg-[#FAFAFA]"
                       }`}
@@ -257,12 +262,24 @@ export function RiwayatClient({
         </div>
       </main>
 
-      {/* Right Detail Panel */}
-      <aside className="w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex flex-col justify-between overflow-y-auto">
+      {/* Right Detail Panel (Desktop lg+; slide-over drawer on < lg) */}
+      {mobileDetailOpen && (
+        <div
+          onClick={() => setMobileDetailOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      )}
+      <aside
+        className={`${
+          mobileDetailOpen
+            ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
+            : "hidden"
+        } lg:static lg:flex lg:w-[330px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
+      >
         {selectedTx ? (
           <>
             <div>
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-[#0F172A]">
                     Detail {selectedTx.orderCode}
@@ -272,21 +289,31 @@ export function RiwayatClient({
                     {formatTimeHHMM(selectedTx.createdAt)}
                   </p>
                 </div>
-                <span
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                    selectedTx.status === "SELESAI"
-                      ? "bg-[#DCFCE7] text-[#15803D]"
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                      selectedTx.status === "SELESAI"
+                        ? "bg-[#DCFCE7] text-[#15803D]"
+                        : selectedTx.status === "REFUND"
+                        ? "bg-[#FEE2E2] text-[#DC2626]"
+                        : "bg-[#FEF3C7] text-[#B45309]"
+                    }`}
+                  >
+                    {selectedTx.status === "SELESAI"
+                      ? "Selesai"
                       : selectedTx.status === "REFUND"
-                      ? "bg-[#FEE2E2] text-[#DC2626]"
-                      : "bg-[#FEF3C7] text-[#B45309]"
-                  }`}
-                >
-                  {selectedTx.status === "SELESAI"
-                    ? "Selesai"
-                    : selectedTx.status === "REFUND"
-                    ? "Refund"
-                    : "Menunggu"}
-                </span>
+                      ? "Refund"
+                      : "Menunggu"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setMobileDetailOpen(false)}
+                    aria-label="Tutup detail"
+                    className="lg:hidden w-7 h-7 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="mt-6 space-y-2.5 text-xs pb-5 border-b border-[#F1F5F9]">
