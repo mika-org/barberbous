@@ -13,14 +13,31 @@ async function KasirDataLoader() {
     redirect("/login");
   }
 
-  const [packages, capsters, bookings, maxOrder, setting] = await Promise.all([
+  const [packages, drinks, capsters, members, bookings, maxOrder, setting] = await Promise.all([
     prisma.package.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.drink.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.capster.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.member.findMany({
+      where: { isActive: true },
+      orderBy: [{ points: "desc" }, { memberCode: "asc" }],
+      take: 30,
+      select: {
+        id: true,
+        memberCode: true,
+        name: true,
+        phone: true,
+        points: true,
+        isActive: true,
+      },
     }),
     prisma.booking.findMany({
       where: { status: { in: ["HADIR", "MENUNGGU"] } },
@@ -41,7 +58,9 @@ async function KasirDataLoader() {
   return (
     <KasirClient
       initialPackages={packages}
+      initialDrinks={drinks}
       initialCapsters={capsters}
+      initialMembers={members}
       initialBookings={bookings}
       initialNextOrderCode={nextOrderCode}
       initialSetting={setting}

@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
     const fromParam = req.nextUrl.searchParams.get("from");
     const toParam = req.nextUrl.searchParams.get("to");
     const packageFilter = req.nextUrl.searchParams.get("packageId") ?? "ALL";
+    const drinkFilter = req.nextUrl.searchParams.get("drinkId") ?? "ALL";
     const capsterFilter = req.nextUrl.searchParams.get("capsterId") ?? "ALL";
 
     const now = new Date();
@@ -34,12 +35,11 @@ export async function GET(req: NextRequest) {
       start.setHours(0, 0, 0, 0);
     }
 
-    // Previous period for delta calculation
     const durationMs = Math.max(86400000, end.getTime() - start.getTime());
     const prevStart = new Date(start.getTime() - durationMs);
     const prevEnd = new Date(start.getTime() - 1);
 
-    const [transactions, prevTransactions, packages, capsters] = await Promise.all([
+    const [transactions, prevTransactions, packages, drinks, capsters] = await Promise.all([
       prisma.transaction.findMany({
         where: {
           status: "SELESAI",
@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.package.findMany({ orderBy: { sortOrder: "asc" } }),
+      prisma.drink.findMany({ orderBy: { sortOrder: "asc" } }),
       prisma.capster.findMany({ orderBy: { sortOrder: "asc" } }),
     ]);
 
@@ -69,7 +70,6 @@ export async function GET(req: NextRequest) {
       prevRevenue > 0 ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100) : 12;
     const countDelta = totalCount - prevCount;
 
-    // Hourly sales 08:00 - 17:00
     const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
     const hourly = hours.map((h) => {
       const hourTotal = transactions
@@ -86,12 +86,13 @@ export async function GET(req: NextRequest) {
       hourly[0] ?? { hour: "13:00", amount: 0, amountThousands: 0 }
     );
 
-    // Helper to expand transaction items (supports multi-item & legacy single-package rows)
-    const getTxPackageLines = (t: (typeof transactions)[number]) => {
+    const getTxLines = (t: (typeof transactions)[number]) => {
       if (t.items && t.items.length > 0) {
         const sub = t.items.reduce((s, it) => s + it.lineTotal, 0) || t.subtotal || 1;
         return t.items.map((it) => ({
+          itemType: it.itemType,
           packageId: it.packageId,
+          drinkId: it.drinkId,
           quantity: it.quantity,
           revenueShare: Math.round((it.lineTotal / sub) * t.total),
           orderType: t.orderType,
@@ -100,7 +101,9 @@ export async function GET(req: NextRequest) {
       }
       return [
         {
+          itemType: "PACKAGE" as const,
           packageId: t.packageId,
+          drinkId: null,
           quantity: 1,
           revenueShare: t.total,
           orderType: t.orderType,
@@ -109,12 +112,17 @@ export async function GET(req: NextRequest) {
       ];
     };
 
-    const allLines = transactions.flatMap(getTxPackageLines);
-    const totalServicesSold = allLines.reduce((s, l) => s + l.quantity, 0);
+    const allLines = transactions.flatMap(getTxLines);
+    const packageLines = allLines.filter((l) => l.itemType === "PACKAGE");
+    const drinkLines = allLines.filter((l) => l.itemType === "DRINK");
 
-    // Per-package aggregation
+    const packageRevenue = packageLines.reduce((s, l) => s + l.revenueShare, 0);
+    const packageSoldTotal = packageLines.reduce((s, l) => s + l.quantity, 0);
+    const drinkRevenue = drinkLines.reduce((s, l) => s + l.revenueShare, 0);
+    const drinkSoldTotal = drinkLines.reduce((s, l) => s + l.quantity, 0);
+
     const packageStats = packages.map((p) => {
-      const rows = allLines.filter((l) => l.packageId === p.id);
+      const rows = packageLines.filter((l) => l.packageId === p.id);
       const sold = rows.reduce((s, r) => s + r.quantity, 0);
       const revenue = rows.reduce((s, r) => s + r.revenueShare, 0);
       return {
@@ -122,15 +130,34 @@ export async function GET(req: NextRequest) {
         name: p.name,
         sold,
         revenue,
-        contributionPct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100) : 0,
+        contributionPct: packageRevenue > 0 ? Math.round((revenue / packageRevenue) * 100) : 0,
       };
     });
 
-    // Per-capster aggregation
+    const drinkStats = drinks.map((d) => {
+      const rows = drinkLines.filter((l) => l.drinkId === d.id);
+      const sold = rows.reduce((s, r) => s + r.quantity, 0);
+      const revenue = rows.reduce((s, r) => s + r.revenueShare, 0);
+      return {
+        id: d.id,
+        name: d.name,
+        sold,
+        stock: d.stock,
+        revenue,
+        contributionPct: drinkRevenue > 0 ? Math.round((revenue / drinkRevenue) * 100) : 0,
+      };
+    });
+
     const capsterStats = capsters.map((c) => {
       const rows = transactions.filter((t) => t.capsterId === c.id);
       const sold = rows.reduce(
-        (s, t) => s + (t.items?.length ? t.items.reduce((q, it) => q + it.quantity, 0) : 1),
+        (s, t) =>
+          s +
+          (t.items?.length
+            ? t.items
+                .filter((it) => it.itemType === "PACKAGE")
+                .reduce((q, it) => q + it.quantity, 0)
+            : 1),
         0
       );
       const revenue = rows.reduce((s, t) => s + t.total, 0);
@@ -143,18 +170,18 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Payment method split
     const tunaiCount = transactions.filter((t) => t.paymentMethod === "TUNAI").length;
     const qrisCount = transactions.filter((t) => t.paymentMethod === "QRIS").length;
+    const debitCount = transactions.filter((t) => t.paymentMethod === "DEBIT").length;
     const tunaiPct = totalCount > 0 ? Math.round((tunaiCount / totalCount) * 100) : 0;
-    const qrisPct = totalCount > 0 ? 100 - tunaiPct : 0;
+    const qrisPct = totalCount > 0 ? Math.round((qrisCount / totalCount) * 100) : 0;
+    const debitPct = totalCount > 0 ? Math.max(0, 100 - tunaiPct - qrisPct) : 0;
 
-    // Package detail breakdown (if packageFilter != ALL)
     let packageDetail = null;
     if (packageFilter !== "ALL") {
       const selectedPkg = packages.find((p) => p.id === packageFilter);
       if (selectedPkg) {
-        const pkgLines = allLines.filter((l) => l.packageId === selectedPkg.id);
+        const pkgLines = packageLines.filter((l) => l.packageId === selectedPkg.id);
         const pkgRevenue = pkgLines.reduce((s, l) => s + l.revenueShare, 0);
         const pkgSold = pkgLines.reduce((s, l) => s + l.quantity, 0);
         const pkgWalkIn = pkgLines
@@ -180,9 +207,9 @@ export async function GET(req: NextRequest) {
         packageDetail = {
           package: selectedPkg,
           revenue: pkgRevenue,
-          revenuePct: totalRevenue > 0 ? Math.round((pkgRevenue / totalRevenue) * 100) : 0,
+          revenuePct: packageRevenue > 0 ? Math.round((pkgRevenue / packageRevenue) * 100) : 0,
           sold: pkgSold,
-          totalSoldAll: totalServicesSold,
+          totalSoldAll: packageSoldTotal,
           walkInCount: pkgWalkIn,
           bookingCount: pkgBooking,
           walkInPct: pkgSold > 0 ? Math.round((pkgWalkIn / pkgSold) * 100) : 0,
@@ -193,13 +220,37 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Capster detail breakdown (if capsterFilter != ALL)
+    let drinkDetail = null;
+    if (drinkFilter !== "ALL") {
+      const selectedDrink = drinks.find((d) => d.id === drinkFilter);
+      if (selectedDrink) {
+        const rows = drinkLines.filter((l) => l.drinkId === selectedDrink.id);
+        const rev = rows.reduce((s, r) => s + r.revenueShare, 0);
+        const sold = rows.reduce((s, r) => s + r.quantity, 0);
+        const walkIn = rows
+          .filter((l) => l.orderType === "WALK_IN")
+          .reduce((s, l) => s + l.quantity, 0);
+        const booking = rows
+          .filter((l) => l.orderType === "BOOKING")
+          .reduce((s, l) => s + l.quantity, 0);
+        drinkDetail = {
+          drink: selectedDrink,
+          revenue: rev,
+          revenuePct: drinkRevenue > 0 ? Math.round((rev / drinkRevenue) * 100) : 0,
+          sold,
+          totalSoldAll: drinkSoldTotal,
+          walkInCount: walkIn,
+          bookingCount: booking,
+        };
+      }
+    }
+
     let capsterDetail = null;
     if (capsterFilter !== "ALL") {
       const selectedCap = capsters.find((c) => c.id === capsterFilter);
       if (selectedCap) {
         const capTx = transactions.filter((t) => t.capsterId === selectedCap.id);
-        const capLines = capTx.flatMap(getTxPackageLines);
+        const capLines = capTx.flatMap(getTxLines).filter((l) => l.itemType === "PACKAGE");
         const capRevenue = capTx.reduce((s, t) => s + t.total, 0);
         const capSold = capLines.reduce((s, l) => s + l.quantity, 0);
         const capWalkIn = capLines
@@ -227,7 +278,7 @@ export async function GET(req: NextRequest) {
           revenue: capRevenue,
           revenuePct: totalRevenue > 0 ? Math.round((capRevenue / totalRevenue) * 100) : 0,
           sold: capSold,
-          totalSoldAll: totalServicesSold,
+          totalSoldAll: packageSoldTotal,
           walkInCount: capWalkIn,
           bookingCount: capBooking,
           walkInPct: capSold > 0 ? Math.round((capWalkIn / capSold) * 100) : 0,
@@ -247,23 +298,31 @@ export async function GET(req: NextRequest) {
           bookingCount,
           revenueDeltaPct,
           countDelta,
+          packageRevenue,
+          packageSoldTotal,
+          drinkRevenue,
+          drinkSoldTotal,
         },
         hourly,
         peakHour,
         packageStats,
+        drinkStats,
         capsterStats,
         paymentSplit: {
           tunaiCount,
           qrisCount,
+          debitCount,
           tunaiPct,
           qrisPct,
+          debitPct,
         },
         packageDetail,
+        drinkDetail,
         capsterDetail,
       },
     });
   } catch (error) {
     console.error("GET /api/reports error:", error);
-    return NextResponse.json({ error: "Gagal memuat laporan penjualan" }, { status: 500 });
+    return NextResponse.json({ error: "Gagal memuat laporan" }, { status: 500 });
   }
 }

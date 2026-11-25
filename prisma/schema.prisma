@@ -25,6 +25,7 @@ enum DiscountType {
 enum PaymentMethod {
   TUNAI
   QRIS
+  DEBIT
 
   @@schema("barberbous")
 }
@@ -42,6 +43,21 @@ enum BookingStatus {
   MENUNGGU
   SELESAI
   BATAL
+
+  @@schema("barberbous")
+}
+
+enum CapsterStatus {
+  TERSEDIA
+  MELAYANI
+  ISTIRAHAT
+
+  @@schema("barberbous")
+}
+
+enum ItemType {
+  PACKAGE
+  DRINK
 
   @@schema("barberbous")
 }
@@ -64,17 +80,61 @@ model Package {
   @@schema("barberbous")
 }
 
+model Drink {
+  id               String            @id @default(cuid())
+  name             String            @unique
+  category         String            @default("Minuman kemasan")
+  price            Int
+  stock            Int               @default(0)
+  minStock         Int               @default(6)
+  imageUrl         String?
+  badgeColor       String            @default("#EDE0CE")
+  isActive         Boolean           @default(true)
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  transactionItems TransactionItem[]
+
+  @@schema("barberbous")
+}
+
 model Capster {
   id           String        @id @default(cuid())
+  code         String        @default("CPS-01")
   name         String        @unique
+  phone        String        @default("0812-0000-0000")
   photoUrl     String?
   bgColor      String        @default("#C4B5E3")
+  status       CapsterStatus @default(TERSEDIA)
+  rating       Float         @default(4.9)
+  joinedLabel  String        @default("Jan 2026")
   isActive     Boolean       @default(true)
   sortOrder    Int           @default(0)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   bookings     Booking[]
   transactions Transaction[]
+
+  @@schema("barberbous")
+}
+
+model Member {
+  id              String        @id @default(cuid())
+  memberCode      String        @unique
+  name            String
+  phone           String        @unique
+  birthDate       String?
+  notes           String?
+  points          Int           @default(0)
+  visits          Int           @default(0)
+  lastVisitAt     DateTime?
+  favoritePackage String?
+  favoriteCapster String?
+  isActive        Boolean       @default(true)
+  joinedAt        DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  transactions    Transaction[]
 
   @@schema("barberbous")
 }
@@ -119,13 +179,15 @@ model Transaction {
   orderType          OrderType         @default(WALK_IN)
   customerName       String            @default("Umum")
   isMember           Boolean           @default(false)
-  packageId          String
-  package            Package           @relation(fields: [packageId], references: [id])
-  packageName        String
-  packageDescription String
-  capsterId          String
-  capster            Capster           @relation(fields: [capsterId], references: [id])
-  capsterName        String
+  memberId           String?
+  member             Member?           @relation(fields: [memberId], references: [id])
+  packageId          String?
+  package            Package?          @relation(fields: [packageId], references: [id])
+  packageName        String            @default("")
+  packageDescription String            @default("")
+  capsterId          String?
+  capster            Capster?          @relation(fields: [capsterId], references: [id])
+  capsterName        String            @default("-")
   bookingId          String?
   booking            Booking?          @relation(fields: [bookingId], references: [id])
   subtotal           Int
@@ -154,8 +216,11 @@ model TransactionItem {
   id                 String      @id @default(cuid())
   transactionId      String
   transaction        Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  packageId          String
-  package            Package     @relation(fields: [packageId], references: [id])
+  itemType           ItemType    @default(PACKAGE)
+  packageId          String?
+  package            Package?    @relation(fields: [packageId], references: [id])
+  drinkId            String?
+  drink              Drink?      @relation(fields: [drinkId], references: [id])
   packageName        String
   packageDescription String
   unitPrice          Int
@@ -183,6 +248,7 @@ model StoreSetting {
   priceIncludesTax  Boolean  @default(false)
   tunaiEnabled      Boolean  @default(true)
   qrisEnabled       Boolean  @default(true)
+  debitEnabled      Boolean  @default(true)
   qrisMerchantName  String   @default("BARBERBOUS BANDUNG")
   updatedAt         DateTime @updatedAt
 

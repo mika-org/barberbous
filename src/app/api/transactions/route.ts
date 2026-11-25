@@ -2,11 +2,12 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { transactionCreateSchema } from "@/lib/validators";
 import { getCurrentUser } from "@/lib/session";
+import { ItemType } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const filter = req.nextUrl.searchParams.get("filter") ?? "ALL"; // ALL | TUNAI | QRIS | MENUNGGU | REFUND
+    const filter = req.nextUrl.searchParams.get("filter") ?? "ALL"; // ALL | TUNAI | QRIS | DEBIT | MENUNGGU | REFUND
     const search = req.nextUrl.searchParams.get("search")?.trim() ?? "";
     const range = req.nextUrl.searchParams.get("range") ?? "today"; // today | 7d | 30d | all
 
@@ -37,6 +38,9 @@ export async function GET(req: NextRequest) {
     } else if (filter === "QRIS") {
       where.paymentMethod = "QRIS";
       where.status = "SELESAI";
+    } else if (filter === "DEBIT") {
+      where.paymentMethod = "DEBIT";
+      where.status = "SELESAI";
     } else if (filter === "MENUNGGU") {
       where.status = "MENUNGGU_PEMBAYARAN";
     } else if (filter === "REFUND") {
@@ -55,7 +59,7 @@ export async function GET(req: NextRequest) {
     const [transactions, maxOrder] = await Promise.all([
       prisma.transaction.findMany({
         where,
-        include: { items: true },
+        include: { items: true, member: true },
         orderBy: [{ orderNumber: "desc" }],
         take: 100,
       }),
@@ -98,54 +102,101 @@ export async function POST(req: NextRequest) {
     const requestedItems =
       parsed.data.items && parsed.data.items.length > 0
         ? parsed.data.items
-        : [{ packageId: parsed.data.packageId!, quantity: 1 }];
+        : [{ itemType: "PACKAGE" as const, packageId: parsed.data.packageId!, quantity: 1 }];
 
-    const packageIds = Array.from(new Set(requestedItems.map((i) => i.packageId)));
+    const packageIds = Array.from(
+      new Set(requestedItems.filter((i) => i.itemType !== "DRINK" && i.packageId).map((i) => i.packageId!))
+    );
+    const drinkIds = Array.from(
+      new Set(requestedItems.filter((i) => i.itemType === "DRINK" && i.drinkId).map((i) => i.drinkId!))
+    );
 
-    const [packages, capster, setting, maxOrder] = await Promise.all([
-      prisma.package.findMany({ where: { id: { in: packageIds } } }),
-      prisma.capster.findUnique({ where: { id: parsed.data.capsterId } }),
+    const [packages, drinks, capster, member, setting, maxOrder] = await Promise.all([
+      packageIds.length > 0
+        ? prisma.package.findMany({ where: { id: { in: packageIds } } })
+        : Promise.resolve([]),
+      drinkIds.length > 0
+        ? prisma.drink.findMany({ where: { id: { in: drinkIds } } })
+        : Promise.resolve([]),
+      parsed.data.capsterId
+        ? prisma.capster.findUnique({ where: { id: parsed.data.capsterId } })
+        : Promise.resolve(null),
+      parsed.data.memberId
+        ? prisma.member.findUnique({ where: { id: parsed.data.memberId } })
+        : Promise.resolve(null),
       prisma.storeSetting.findUnique({ where: { id: "default" } }),
       prisma.transaction.aggregate({ _max: { orderNumber: true } }),
     ]);
 
     const pkgById = new Map(packages.map((p) => [p.id, p]));
-    const resolvedItems = requestedItems.map((item) => {
-      const pkg = pkgById.get(item.packageId);
-      if (!pkg) return null;
-      return {
-        packageId: pkg.id,
-        packageName: pkg.name,
-        packageDescription: pkg.description,
-        unitPrice: pkg.price,
-        quantity: item.quantity,
-        lineTotal: pkg.price * item.quantity,
-      };
-    });
+    const drinkById = new Map(drinks.map((d) => [d.id, d]));
 
-    if (resolvedItems.some((i) => i === null)) {
-      return NextResponse.json({ error: "Salah satu paket tidak ditemukan" }, { status: 404 });
+    const resolvedItems: Array<{
+      itemType: ItemType;
+      packageId: string | null;
+      drinkId: string | null;
+      packageName: string;
+      packageDescription: string;
+      unitPrice: number;
+      quantity: number;
+      lineTotal: number;
+    }> = [];
+
+    for (const item of requestedItems) {
+      if (item.itemType === "DRINK") {
+        const drink = item.drinkId ? drinkById.get(item.drinkId) : undefined;
+        if (!drink) {
+          return NextResponse.json({ error: "Salah satu minuman tidak ditemukan" }, { status: 404 });
+        }
+        if (drink.stock < item.quantity) {
+          return NextResponse.json(
+            { error: `Stok ${drink.name} tersisa ${drink.stock} botol` },
+            { status: 400 }
+          );
+        }
+        resolvedItems.push({
+          itemType: ItemType.DRINK,
+          packageId: null,
+          drinkId: drink.id,
+          packageName: drink.name,
+          packageDescription: drink.category,
+          unitPrice: drink.price,
+          quantity: item.quantity,
+          lineTotal: drink.price * item.quantity,
+        });
+      } else {
+        const pkg = item.packageId ? pkgById.get(item.packageId) : undefined;
+        if (!pkg) {
+          return NextResponse.json({ error: "Salah satu paket tidak ditemukan" }, { status: 404 });
+        }
+        resolvedItems.push({
+          itemType: ItemType.PACKAGE,
+          packageId: pkg.id,
+          drinkId: null,
+          packageName: pkg.name,
+          packageDescription: pkg.description,
+          unitPrice: pkg.price,
+          quantity: item.quantity,
+          lineTotal: pkg.price * item.quantity,
+        });
+      }
     }
-    const lineItems = resolvedItems as NonNullable<(typeof resolvedItems)[number]>[];
 
-    if (!capster) {
-      return NextResponse.json({ error: "Capster tidak ditemukan" }, { status: 404 });
-    }
-
-    const primaryItem = lineItems[0];
-    const totalQty = lineItems.reduce((sum, i) => sum + i.quantity, 0);
+    const firstPackageItem = resolvedItems.find((i) => i.itemType === ItemType.PACKAGE);
+    const primaryItem = firstPackageItem ?? resolvedItems[0];
+    const totalItemLines = resolvedItems.length;
     const summaryPkgName =
-      lineItems.length === 1
-        ? totalQty > 1
-          ? `${primaryItem.packageName} (${totalQty}×)`
+      totalItemLines === 1
+        ? primaryItem.quantity > 1
+          ? `${primaryItem.packageName} (${primaryItem.quantity}×)`
           : primaryItem.packageName
-        : `${primaryItem.packageName} +${lineItems.length - 1} lainnya`;
+        : `${primaryItem.packageName} +${totalItemLines - 1} lainnya`;
     const summaryPkgDesc =
-      lineItems.length === 1
+      totalItemLines === 1
         ? primaryItem.packageDescription
-        : lineItems.map((i) => `${i.quantity}× ${i.packageName}`).join(", ");
+        : resolvedItems.map((i) => `${i.quantity}× ${i.packageName}`).join(", ");
 
-    const subtotal = lineItems.reduce((sum, i) => sum + i.lineTotal, 0);
+    const subtotal = resolvedItems.reduce((sum, i) => sum + i.lineTotal, 0);
     let discountAmount = 0;
     if (parsed.data.discountType === "PERCENT" && parsed.data.discountValue > 0) {
       discountAmount = Math.round((subtotal * Math.min(100, parsed.data.discountValue)) / 100);
@@ -178,19 +229,23 @@ export async function POST(req: NextRequest) {
     const nextNumber = (maxOrder._max.orderNumber ?? 0) + 1;
     const orderCode = `#${String(nextNumber).padStart(4, "0")}`;
 
+    const resolvedCustomerName = member ? member.name : parsed.data.customerName;
+    const resolvedIsMember = member ? true : parsed.data.isMember;
+
     const created = await prisma.$transaction(async (tx) => {
       const createdTx = await tx.transaction.create({
         data: {
           orderNumber: nextNumber,
           orderCode,
           orderType: parsed.data.orderType,
-          customerName: parsed.data.customerName,
-          isMember: parsed.data.isMember,
-          packageId: primaryItem.packageId,
+          customerName: resolvedCustomerName,
+          isMember: resolvedIsMember,
+          memberId: member?.id ?? null,
+          packageId: firstPackageItem?.packageId ?? null,
           packageName: summaryPkgName,
           packageDescription: summaryPkgDesc,
-          capsterId: capster.id,
-          capsterName: capster.name,
+          capsterId: capster?.id ?? null,
+          capsterName: capster?.name ?? (firstPackageItem ? "Siapa saja" : "-"),
           bookingId: parsed.data.bookingId ?? null,
           subtotal,
           discountType: parsed.data.discountType ?? null,
@@ -208,11 +263,40 @@ export async function POST(req: NextRequest) {
           notes: parsed.data.notes ?? null,
           cashierName: currentUser?.name ?? "Rehan",
           items: {
-            create: lineItems,
+            create: resolvedItems,
           },
         },
-        include: { items: true },
+        include: { items: true, member: true },
       });
+
+      // Decrement drink stocks
+      const drinkDecrements = new Map<string, number>();
+      for (const item of resolvedItems) {
+        if (item.itemType === ItemType.DRINK && item.drinkId) {
+          drinkDecrements.set(item.drinkId, (drinkDecrements.get(item.drinkId) ?? 0) + item.quantity);
+        }
+      }
+      for (const [dId, qty] of drinkDecrements.entries()) {
+        await tx.drink.update({
+          where: { id: dId },
+          data: { stock: { decrement: qty } },
+        });
+      }
+
+      // Award loyalty points & increment visit if member linked & completed
+      if (member && parsed.data.status === "SELESAI") {
+        const earnedPoints = Math.max(10, Math.floor(total / 1000) * 10);
+        await tx.member.update({
+          where: { id: member.id },
+          data: {
+            points: { increment: earnedPoints },
+            visits: { increment: 1 },
+            lastVisitAt: new Date(),
+            ...(firstPackageItem ? { favoritePackage: firstPackageItem.packageName } : {}),
+            ...(capster ? { favoriteCapster: capster.name } : {}),
+          },
+        });
+      }
 
       if (parsed.data.bookingId && parsed.data.status === "SELESAI") {
         await tx.booking.update({

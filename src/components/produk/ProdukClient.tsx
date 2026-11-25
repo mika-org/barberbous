@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { Search, Plus, Box, Scissors, X, Trash2 } from "lucide-react";
-import { formatRupiah } from "@/lib/format";
+import { Search, Plus, Box, CupSoda, X, Trash2 } from "lucide-react";
+import { formatRupiah, getInitials } from "@/lib/format";
 
 export interface ProductPackage {
   id: string;
@@ -14,49 +14,62 @@ export interface ProductPackage {
   isActive: boolean;
 }
 
-export interface ProductCapster {
+export interface ProductDrink {
   id: string;
   name: string;
-  photoUrl: string | null;
-  bgColor: string;
+  category: string;
+  price: number;
+  stock: number;
+  minStock: number;
+  imageUrl: string | null;
+  badgeColor: string;
   isActive: boolean;
 }
 
 type DrawerMode =
   | { kind: "edit-package"; item: ProductPackage }
   | { kind: "new-package" }
-  | { kind: "edit-capster"; item: ProductCapster }
-  | { kind: "new-capster" }
+  | { kind: "edit-drink"; item: ProductDrink }
+  | { kind: "new-drink" }
   | null;
 
 export function ProdukClient({
   initialPackages,
-  initialCapsters,
+  initialDrinks,
 }: {
   initialPackages: ProductPackage[];
-  initialCapsters: ProductCapster[];
+  initialDrinks: ProductDrink[];
 }) {
   const [packages, setPackages] = useState<ProductPackage[]>(initialPackages);
-  const [capsters, setCapsters] = useState<ProductCapster[]>(initialCapsters);
+  const [drinks, setDrinks] = useState<ProductDrink[]>(initialDrinks);
   const [search, setSearch] = useState("");
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [drawer, setDrawer] = useState<DrawerMode>(
-    initialPackages[0] ? { kind: "edit-package", item: initialPackages[0] } : null
+    initialDrinks[0]
+      ? { kind: "edit-drink", item: initialDrinks[0] }
+      : initialPackages[0]
+        ? { kind: "edit-package", item: initialPackages[0] }
+        : null
   );
 
   // Form states
-  const [nameInput, setNameInput] = useState(initialPackages[0]?.name ?? "");
-  const [descInput, setDescInput] = useState(initialPackages[0]?.description ?? "");
+  const [nameInput, setNameInput] = useState(initialDrinks[0]?.name ?? "");
+  const [descInput, setDescInput] = useState(initialDrinks[0]?.category ?? "Minuman kemasan");
   const [priceInput, setPriceInput] = useState(
-    initialPackages[0] ? String(initialPackages[0].price) : "30000"
+    initialDrinks[0] ? String(initialDrinks[0].price) : "5000"
+  );
+  const [stockInput, setStockInput] = useState(
+    initialDrinks[0] ? String(initialDrinks[0].stock) : "24"
+  );
+  const [minStockInput, setMinStockInput] = useState(
+    initialDrinks[0] ? String(initialDrinks[0].minStock) : "6"
   );
   const [imageInput, setImageInput] = useState<string | null>(
-    initialPackages[0]?.imageUrl ?? null
+    initialDrinks[0]?.imageUrl ?? null
   );
-  const [bgColorInput, setBgColorInput] = useState("#C4B5E3");
   const [activeInput, setActiveInput] = useState<boolean>(
-    initialPackages[0]?.isActive ?? true
+    initialDrinks[0]?.isActive ?? true
   );
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -85,83 +98,69 @@ export function ProdukClient({
     setFeedback(null);
   };
 
-  const openEditCapster = (cap: ProductCapster) => {
-    setDrawer({ kind: "edit-capster", item: cap });
+  const openEditDrink = (drink: ProductDrink) => {
+    setDrawer({ kind: "edit-drink", item: drink });
     setMobileDrawerOpen(true);
-    setNameInput(cap.name);
-    setImageInput(cap.photoUrl);
-    setBgColorInput(cap.bgColor);
-    setActiveInput(cap.isActive);
+    setNameInput(drink.name);
+    setDescInput(drink.category);
+    setPriceInput(String(drink.price));
+    setStockInput(String(drink.stock));
+    setMinStockInput(String(drink.minStock));
+    setImageInput(drink.imageUrl);
+    setActiveInput(drink.isActive);
     setFeedback(null);
   };
 
-  const openNewCapster = () => {
+  const openNewDrink = () => {
     setShowAddMenu(false);
-    setDrawer({ kind: "new-capster" });
+    setDrawer({ kind: "new-drink" });
     setMobileDrawerOpen(true);
     setNameInput("");
+    setDescInput("Minuman kemasan");
+    setPriceInput("5000");
+    setStockInput("20");
+    setMinStockInput("6");
     setImageInput(null);
-    setBgColorInput("#C4B5E3");
     setActiveInput(true);
     setFeedback(null);
   };
 
-  const filteredPackages = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return packages;
-    return packages.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
-    );
-  }, [packages, search]);
-
-  const filteredCapsters = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return capsters;
-    return capsters.filter((c) => c.name.toLowerCase().includes(q));
-  }, [capsters, search]);
-
-  const handleTogglePackageActive = async (e: React.MouseEvent, pkg: ProductPackage) => {
-    e.stopPropagation();
-    const next = !pkg.isActive;
+  const handleTogglePackage = async (pkg: ProductPackage) => {
     const res = await fetch(`/api/packages/${pkg.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: next }),
+      body: JSON.stringify({ isActive: !pkg.isActive }),
     });
     if (res.ok) {
       const json = await res.json();
       setPackages((prev) => prev.map((p) => (p.id === pkg.id ? json.data : p)));
       if (drawer?.kind === "edit-package" && drawer.item.id === pkg.id) {
-        setActiveInput(next);
+        setActiveInput(json.data.isActive);
       }
     }
   };
 
-  const handleToggleCapsterActive = async (e: React.MouseEvent, cap: ProductCapster) => {
-    e.stopPropagation();
-    const next = !cap.isActive;
-    const res = await fetch(`/api/capsters/${cap.id}`, {
+  const handleToggleDrink = async (drink: ProductDrink) => {
+    const res = await fetch(`/api/drinks/${drink.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: next }),
+      body: JSON.stringify({ isActive: !drink.isActive }),
     });
     if (res.ok) {
       const json = await res.json();
-      setCapsters((prev) => prev.map((c) => (c.id === cap.id ? json.data : c)));
-      if (drawer?.kind === "edit-capster" && drawer.item.id === cap.id) {
-        setActiveInput(next);
+      setDrinks((prev) => prev.map((d) => (d.id === drink.id ? json.data : d)));
+      if (drawer?.kind === "edit-drink" && drawer.item.id === drink.id) {
+        setActiveInput(json.data.isActive);
       }
     }
   };
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImageInput(reader.result);
-      }
+      if (typeof reader.result === "string") setImageInput(reader.result);
     };
     reader.readAsDataURL(file);
   };
@@ -171,7 +170,6 @@ export function ProdukClient({
     if (!drawer) return;
     setSaving(true);
     setFeedback(null);
-
     try {
       if (drawer.kind === "edit-package") {
         const res = await fetch(`/api/packages/${drawer.item.id}`, {
@@ -180,18 +178,16 @@ export function ProdukClient({
           body: JSON.stringify({
             name: nameInput,
             description: descInput,
-            price: Number(priceInput.replace(/\D/g, "")) || 0,
+            price: Number(priceInput),
             imageUrl: imageInput,
             isActive: activeInput,
           }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error);
-        setPackages((prev) =>
-          prev.map((p) => (p.id === drawer.item.id ? json.data : p))
-        );
+        setPackages((prev) => prev.map((p) => (p.id === json.data.id ? json.data : p)));
         setDrawer({ kind: "edit-package", item: json.data });
-        setFeedback("Perubahan paket disimpan");
+        setFeedback("Paket berhasil diperbarui");
       } else if (drawer.kind === "new-package") {
         const res = await fetch("/api/packages", {
           method: "POST",
@@ -199,7 +195,7 @@ export function ProdukClient({
           body: JSON.stringify({
             name: nameInput,
             description: descInput,
-            price: Number(priceInput.replace(/\D/g, "")) || 0,
+            price: Number(priceInput),
             imageUrl: imageInput,
             isActive: activeInput,
           }),
@@ -207,45 +203,49 @@ export function ProdukClient({
         const json = await res.json();
         if (!res.ok) throw new Error(json.error);
         setPackages((prev) => [...prev, json.data]);
-        openEditPackage(json.data);
+        setDrawer({ kind: "edit-package", item: json.data });
         setFeedback("Paket baru ditambahkan");
-      } else if (drawer.kind === "edit-capster") {
-        const res = await fetch(`/api/capsters/${drawer.item.id}`, {
+      } else if (drawer.kind === "edit-drink") {
+        const res = await fetch(`/api/drinks/${drawer.item.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: nameInput,
-            photoUrl: imageInput,
-            bgColor: bgColorInput,
+            category: descInput,
+            price: Number(priceInput),
+            stock: Number(stockInput),
+            minStock: Number(minStockInput),
+            imageUrl: imageInput,
             isActive: activeInput,
           }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error);
-        setCapsters((prev) =>
-          prev.map((c) => (c.id === drawer.item.id ? json.data : c))
-        );
-        setDrawer({ kind: "edit-capster", item: json.data });
-        setFeedback("Perubahan capster disimpan");
-      } else if (drawer.kind === "new-capster") {
-        const res = await fetch("/api/capsters", {
+        setDrinks((prev) => prev.map((d) => (d.id === json.data.id ? json.data : d)));
+        setDrawer({ kind: "edit-drink", item: json.data });
+        setFeedback("Minuman berhasil diperbarui");
+      } else if (drawer.kind === "new-drink") {
+        const res = await fetch("/api/drinks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: nameInput,
-            photoUrl: imageInput,
-            bgColor: bgColorInput,
+            category: descInput,
+            price: Number(priceInput),
+            stock: Number(stockInput),
+            minStock: Number(minStockInput),
+            imageUrl: imageInput,
             isActive: activeInput,
           }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error);
-        setCapsters((prev) => [...prev, json.data]);
-        openEditCapster(json.data);
-        setFeedback("Capster baru ditambahkan");
+        setDrinks((prev) => [...prev, json.data]);
+        setDrawer({ kind: "edit-drink", item: json.data });
+        setFeedback("Minuman baru ditambahkan");
       }
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : "Gagal menyimpan");
+      setFeedback(err instanceof Error ? err.message : "Gagal menyimpan data");
     } finally {
       setSaving(false);
     }
@@ -253,41 +253,57 @@ export function ProdukClient({
 
   const handleDelete = async () => {
     if (!drawer) return;
-    if (drawer.kind === "edit-package") {
-      const res = await fetch(`/api/packages/${drawer.item.id}`, { method: "DELETE" });
-      const json = await res.json();
-      if (res.ok) {
+    setSaving(true);
+    try {
+      if (drawer.kind === "edit-package") {
+        const res = await fetch(`/api/packages/${drawer.item.id}`, { method: "DELETE" });
+        const json = await res.json();
         if (json.deactivated) {
-          setPackages((prev) =>
-            prev.map((p) => (p.id === drawer.item.id ? json.data : p))
-          );
+          setPackages((prev) => prev.map((p) => (p.id === json.data.id ? json.data : p)));
           setActiveInput(false);
           setFeedback(json.message);
         } else {
-          setPackages((prev) => prev.filter((p) => p.id !== drawer.item.id));
-          setDrawer(null);
+          const remaining = packages.filter((p) => p.id !== drawer.item.id);
+          setPackages(remaining);
+          setDrawer(remaining[0] ? { kind: "edit-package", item: remaining[0] } : null);
         }
-      }
-    } else if (drawer.kind === "edit-capster") {
-      const res = await fetch(`/api/capsters/${drawer.item.id}`, { method: "DELETE" });
-      const json = await res.json();
-      if (res.ok) {
+      } else if (drawer.kind === "edit-drink") {
+        const res = await fetch(`/api/drinks/${drawer.item.id}`, { method: "DELETE" });
+        const json = await res.json();
         if (json.deactivated) {
-          setCapsters((prev) =>
-            prev.map((c) => (c.id === drawer.item.id ? json.data : c))
-          );
+          setDrinks((prev) => prev.map((d) => (d.id === json.data.id ? json.data : d)));
           setActiveInput(false);
           setFeedback(json.message);
         } else {
-          setCapsters((prev) => prev.filter((c) => c.id !== drawer.item.id));
-          setDrawer(null);
+          const remaining = drinks.filter((d) => d.id !== drawer.item.id);
+          setDrinks(remaining);
+          setDrawer(remaining[0] ? { kind: "edit-drink", item: remaining[0] } : null);
         }
       }
+    } finally {
+      setSaving(false);
     }
   };
 
-  const isPackageDrawer =
-    drawer?.kind === "edit-package" || drawer?.kind === "new-package";
+  const filteredPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q
+      ? packages.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+        )
+      : packages;
+  }, [packages, search]);
+
+  const filteredDrinks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q
+      ? drinks.filter(
+          (d) => d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)
+        )
+      : drinks;
+  }, [drinks, search]);
+
+  const isDrinkDrawer = drawer?.kind === "edit-drink" || drawer?.kind === "new-drink";
 
   return (
     <>
@@ -297,18 +313,18 @@ export function ProdukClient({
           <div>
             <h1 className="text-xl font-bold text-[#0F172A]">Produk</h1>
             <p className="text-xs text-[#64748B] mt-0.5">
-              {packages.length} paket · {capsters.length} capster
+              {packages.length} paket · {drinks.length} minuman
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 relative w-full sm:w-auto">
-            <div className="relative flex-1 sm:flex-initial sm:w-64">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <div className="relative flex-1 sm:flex-initial sm:w-56">
               <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari paket atau capster"
+                placeholder="Cari paket atau minuman"
                 className="w-full bg-white border border-[#E5E7EB] rounded-xl pl-8 pr-3 py-2 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A]"
               />
             </div>
@@ -316,27 +332,27 @@ export function ProdukClient({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setShowAddMenu((s) => !s)}
-                className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl px-4 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setShowAddMenu((prev) => !prev)}
+                className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl px-4 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Tambah baru
               </button>
               {showAddMenu && (
-                <div className="absolute right-0 mt-2 w-44 bg-white border border-[#E5E7EB] rounded-xl shadow-lg py-1.5 z-30 text-xs">
+                <div className="absolute right-0 mt-2 w-44 bg-white border border-[#E5E7EB] rounded-xl shadow-lg py-1 z-20 text-xs">
                   <button
                     type="button"
                     onClick={openNewPackage}
-                    className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] font-medium text-[#0F172A] cursor-pointer"
+                    className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] text-[#0F172A] font-medium cursor-pointer"
                   >
                     + Tambah paket
                   </button>
                   <button
                     type="button"
-                    onClick={openNewCapster}
-                    className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] font-medium text-[#0F172A] cursor-pointer"
+                    onClick={openNewDrink}
+                    className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] text-[#0F172A] font-medium cursor-pointer"
                   >
-                    + Tambah capster
+                    + Tambah minuman
                   </button>
                 </div>
               )}
@@ -344,50 +360,69 @@ export function ProdukClient({
           </div>
         </div>
 
-        {/* Paket Section */}
-        <section className="mt-6">
-          <div className="inline-flex items-center gap-2 bg-white border border-[#E5E7EB] rounded-full px-3.5 py-1.5 text-xs font-medium text-[#0F172A] shadow-2xs">
-            <Box className="w-3.5 h-3.5 text-[#475569]" />
-            <span>Paket</span>
+        {/* Section 1: Paket */}
+        <div className="mt-5">
+          <div className="inline-flex items-center gap-1.5 bg-white border border-[#E5E7EB] rounded-full px-3 py-1 text-[11px] font-medium text-[#0F172A]">
+            <Box className="w-3 h-3" />
+            Paket
           </div>
 
-          <div className="mt-3 bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="mt-2.5 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
+            <table className="w-full min-w-[420px] text-left border-collapse">
               <thead>
                 <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
-                  <th className="py-2.5 px-4">Paket</th>
-                  <th className="py-2.5 px-4 text-right">Harga</th>
-                  <th className="py-2.5 px-4 text-right">Aktif</th>
+                  <th className="py-3 px-4">Paket</th>
+                  <th className="py-3 px-4 text-right">Harga</th>
+                  <th className="py-3 px-4 text-right">Aktif</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9] text-xs">
                 {filteredPackages.map((pkg) => {
-                  const selected =
+                  const isSelected =
                     drawer?.kind === "edit-package" && drawer.item.id === pkg.id;
                   return (
                     <tr
                       key={pkg.id}
                       onClick={() => openEditPackage(pkg)}
                       className={`cursor-pointer transition ${
-                        selected ? "bg-[#F8FAFC]" : "hover:bg-[#FAFAFA]"
+                        isSelected ? "bg-[#F8FAFC]" : "hover:bg-[#FAFAFA]"
                       }`}
                     >
-                      <td className="py-3 px-4">
+                      <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <span className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#9A6B3B] font-bold text-xs flex items-center justify-center shrink-0">
-                            {pkg.name.slice(0, 1).toUpperCase()}
-                          </span>
-                          <span className="font-semibold text-[#0F172A]">{pkg.name}</span>
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-[#3F3A32] shrink-0 overflow-hidden"
+                            style={{ backgroundColor: pkg.badgeColor || "#EDE0CE" }}
+                          >
+                            {pkg.imageUrl ? (
+                              <img
+                                src={pkg.imageUrl}
+                                alt={pkg.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              pkg.name.slice(0, 1).toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-[#0F172A]">{pkg.name}</p>
+                            <p className="text-[11px] text-[#64748B] truncate max-w-[260px]">
+                              {pkg.description}
+                            </p>
+                          </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right font-medium text-[#0F172A]">
+                      <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
                         {formatRupiah(pkg.price)}
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td
+                        className="py-3.5 px-4 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <button
                           type="button"
-                          onClick={(e) => handleTogglePackageActive(e, pkg)}
-                          aria-label={`Toggle ${pkg.name}`}
+                          aria-label={`Aktifkan paket ${pkg.name}`}
+                          onClick={() => handleTogglePackage(pkg)}
                           className={`inline-flex items-center w-9 h-5 rounded-full p-0.5 transition cursor-pointer ${
                             pkg.isActive ? "bg-[#15803D]" : "bg-[#CBD5E1]"
                           }`}
@@ -405,55 +440,104 @@ export function ProdukClient({
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
 
-        {/* Capster Section */}
-        <section className="mt-6">
-          <div className="inline-flex items-center gap-2 bg-white border border-[#E5E7EB] rounded-full px-3.5 py-1.5 text-xs font-medium text-[#0F172A] shadow-2xs">
-            <Scissors className="w-3.5 h-3.5 text-[#475569]" />
-            <span>Capster</span>
+        {/* Section 2: Minuman Kemasan */}
+        <div className="mt-6">
+          <div className="inline-flex items-center gap-1.5 bg-white border border-[#E5E7EB] rounded-full px-3 py-1 text-[11px] font-medium text-[#0F172A]">
+            <CupSoda className="w-3 h-3" />
+            Minuman Kemasan
           </div>
 
-          <div className="mt-3 bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="mt-2.5 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
+            <table className="w-full min-w-[520px] text-left border-collapse">
               <thead>
                 <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
-                  <th className="py-2.5 px-4">Capster</th>
-                  <th className="py-2.5 px-4 text-right">Aktif</th>
+                  <th className="py-3 px-4">Minuman</th>
+                  <th className="py-3 px-4 text-right">Harga</th>
+                  <th className="py-3 px-4 text-right">Stok (kulkas)</th>
+                  <th className="py-3 px-4 text-right">Aktif</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9] text-xs">
-                {filteredCapsters.map((cap) => {
-                  const selected =
-                    drawer?.kind === "edit-capster" && drawer.item.id === cap.id;
+                {filteredDrinks.map((drink) => {
+                  const isSelected =
+                    drawer?.kind === "edit-drink" && drawer.item.id === drink.id;
+                  const isOut = drink.stock <= 0;
+                  const isLow = drink.stock > 0 && drink.stock <= drink.minStock;
                   return (
                     <tr
-                      key={cap.id}
-                      onClick={() => openEditCapster(cap)}
+                      key={drink.id}
+                      onClick={() => openEditDrink(drink)}
                       className={`cursor-pointer transition ${
-                        selected ? "bg-[#F8FAFC]" : "hover:bg-[#FAFAFA]"
+                        isSelected ? "bg-[#F8FAFC]" : "hover:bg-[#FAFAFA]"
                       }`}
                     >
-                      <td className="py-3 px-4">
+                      <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <span className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#9A6B3B] font-bold text-xs flex items-center justify-center shrink-0">
-                            {cap.name.slice(0, 1).toUpperCase()}
-                          </span>
-                          <span className="font-semibold text-[#0F172A]">{cap.name}</span>
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-[#3F3A32] shrink-0 overflow-hidden"
+                            style={{ backgroundColor: drink.badgeColor || "#EDE0CE" }}
+                          >
+                            {drink.imageUrl ? (
+                              <img
+                                src={drink.imageUrl}
+                                alt={drink.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              drink.name.slice(0, 1).toUpperCase()
+                            )}
+                          </div>
+                          <span className="font-semibold text-[#0F172A]">{drink.name}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
+                        {formatRupiah(drink.price)}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <span className="inline-flex items-center gap-1.5 font-medium">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isOut
+                                ? "bg-[#DC2626]"
+                                : isLow
+                                  ? "bg-[#F59E0B]"
+                                  : "bg-[#15803D]"
+                            }`}
+                          />
+                          <span
+                            className={
+                              isOut
+                                ? "text-[#DC2626]"
+                                : isLow
+                                  ? "text-[#B45309]"
+                                  : "text-[#0F172A]"
+                            }
+                          >
+                            {isOut
+                              ? "0 · habis"
+                              : isLow
+                                ? `${drink.stock} botol · menipis`
+                                : `${drink.stock} botol`}
+                          </span>
+                        </span>
+                      </td>
+                      <td
+                        className="py-3.5 px-4 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <button
                           type="button"
-                          onClick={(e) => handleToggleCapsterActive(e, cap)}
-                          aria-label={`Toggle ${cap.name}`}
+                          aria-label={`Aktifkan minuman ${drink.name}`}
+                          onClick={() => handleToggleDrink(drink)}
                           className={`inline-flex items-center w-9 h-5 rounded-full p-0.5 transition cursor-pointer ${
-                            cap.isActive ? "bg-[#15803D]" : "bg-[#CBD5E1]"
+                            drink.isActive ? "bg-[#15803D]" : "bg-[#CBD5E1]"
                           }`}
                         >
                           <span
                             className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition ${
-                              cap.isActive ? "translate-x-4" : "translate-x-0"
+                              drink.isActive ? "translate-x-4" : "translate-x-0"
                             }`}
                           />
                         </button>
@@ -464,10 +548,10 @@ export function ProdukClient({
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
       </main>
 
-      {/* Right Edit / Add Drawer (Desktop lg+; slide-over on < lg) */}
+      {/* Right Edit / Add Drawer */}
       {drawer && mobileDrawerOpen && (
         <div
           onClick={() => setMobileDrawerOpen(false)}
@@ -480,171 +564,169 @@ export function ProdukClient({
             mobileDrawerOpen
               ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
               : "hidden"
-          } lg:static lg:flex lg:w-[330px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
+          } lg:static lg:flex lg:w-[330px] xl:w-[375px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
         >
-          <form onSubmit={handleSave} className="flex-1 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-base font-bold text-[#0F172A]">
-                  {drawer.kind === "edit-package"
-                    ? "Edit paket"
-                    : drawer.kind === "new-package"
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-[#0F172A]">
+                {drawer.kind === "edit-package"
+                  ? "Edit paket"
+                  : drawer.kind === "new-package"
                     ? "Tambah paket"
-                    : drawer.kind === "edit-capster"
-                    ? "Edit capster"
-                    : "Tambah capster"}
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileDrawerOpen(false);
-                    setDrawer(null);
-                  }}
-                  className="w-8 h-8 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Preview Box */}
-              <div
-                className="h-28 rounded-xl flex items-center justify-center overflow-hidden"
-                style={{
-                  backgroundColor: isPackageDrawer ? "#EDE0CE" : bgColorInput,
-                }}
-              >
-                {imageInput ? (
-                  <img
-                    src={imageInput}
-                    alt={nameInput || "Preview"}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-2xl font-bold text-[#9A6B3B]">
-                    {(nameInput || "B").slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-              </div>
-
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoSelect}
-                className="hidden"
-              />
+                    : drawer.kind === "edit-drink"
+                      ? "Edit minuman"
+                      : "Tambah minuman"}
+              </h2>
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
-                className="mt-2.5 w-full py-2 rounded-xl border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-medium text-[#0F172A] cursor-pointer"
+                onClick={() => {
+                  setMobileDrawerOpen(false);
+                  setDrawer(null);
+                }}
+                className="w-8 h-8 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
               >
-                Ganti foto
+                <X className="w-4 h-4" />
               </button>
+            </div>
 
-              <div className="mt-5 space-y-3.5 text-xs">
+            {/* Preview Box */}
+            <div className="w-full h-24 rounded-2xl bg-[#EDE0CE] flex items-center justify-center overflow-hidden">
+              {imageInput ? (
+                <img src={imageInput} alt={nameInput} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-lg font-extrabold tracking-widest uppercase text-[#574F43]">
+                  {isDrinkDrawer
+                    ? getInitials(nameInput || "MN")
+                    : nameInput || "PAKET"}
+                </span>
+              )}
+            </div>
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-full py-2 border border-[#E5E7EB] hover:bg-[#F8FAFC] rounded-xl text-xs font-semibold text-[#0F172A] cursor-pointer"
+            >
+              Ganti foto
+            </button>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                {isDrinkDrawer ? "Nama minuman" : "Nama paket"}
+              </label>
+              <input
+                required
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                {isDrinkDrawer ? "Kategori" : "Isi paket"}
+              </label>
+              <input
+                required
+                value={descInput}
+                onChange={(e) => setDescInput(e.target.value)}
+                className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[#64748B] mb-1">Harga</label>
+              <input
+                required
+                type="number"
+                min={0}
+                step={500}
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+              />
+            </div>
+
+            {isDrinkDrawer && (
+              <>
                 <div>
                   <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                    {isPackageDrawer ? "Nama paket" : "Nama capster"}
+                    Stok kulkas saat ini (botol)
                   </label>
                   <input
                     required
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2.5 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                    type="number"
+                    min={0}
+                    value={stockInput}
+                    onChange={(e) => setStockInput(e.target.value)}
+                    className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
                   />
                 </div>
 
-                {isPackageDrawer ? (
-                  <>
-                    <div>
-                      <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                        Isi paket
-                      </label>
-                      <input
-                        required
-                        value={descInput}
-                        onChange={(e) => setDescInput(e.target.value)}
-                        className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2.5 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                        Harga
-                      </label>
-                      <input
-                        required
-                        type="number"
-                        min={0}
-                        step={1000}
-                        value={priceInput}
-                        onChange={(e) => setPriceInput(e.target.value)}
-                        className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                      Warna latar kartu
-                    </label>
-                    <div className="flex items-center gap-2">
-                      {["#C4B5E3", "#E59A1A", "#EE3E7D", "#93C5FD", "#86EFAC"].map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setBgColorInput(c)}
-                          className={`w-7 h-7 rounded-lg border-2 cursor-pointer ${
-                            bgColorInput === c ? "border-[#0F172A]" : "border-transparent"
-                          }`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-xs font-medium text-[#0F172A]">
-                    Tampilkan di kasir
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveInput((a) => !a)}
-                    className={`inline-flex items-center w-9 h-5 rounded-full p-0.5 transition cursor-pointer ${
-                      activeInput ? "bg-[#15803D]" : "bg-[#CBD5E1]"
-                    }`}
-                  >
-                    <span
-                      className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition ${
-                        activeInput ? "translate-x-4" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
+                <div>
+                  <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                    Batas stok minimum (peringatan)
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    min={0}
+                    value={minStockInput}
+                    onChange={(e) => setMinStockInput(e.target.value)}
+                    className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  />
                 </div>
+              </>
+            )}
 
-                {feedback && (
-                  <p className="text-[11px] font-medium text-[#15803D]">{feedback}</p>
-                )}
-              </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs font-medium text-[#0F172A]">Tampilkan di kasir</span>
+              <button
+                type="button"
+                onClick={() => setActiveInput((p) => !p)}
+                className={`inline-flex items-center w-9 h-5 rounded-full p-0.5 transition cursor-pointer ${
+                  activeInput ? "bg-[#15803D]" : "bg-[#CBD5E1]"
+                }`}
+              >
+                <span
+                  className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition ${
+                    activeInput ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
             </div>
 
-            <div className="space-y-2.5 pt-6">
+            {feedback && (
+              <p className="text-[11px] font-medium text-[#15803D] bg-[#F0FDF4] px-3 py-2 rounded-lg">
+                {feedback}
+              </p>
+            )}
+
+            <div className="pt-2 space-y-2">
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold cursor-pointer disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold cursor-pointer"
               >
                 {saving ? "Menyimpan..." : "Simpan perubahan"}
               </button>
 
-              {(drawer.kind === "edit-package" || drawer.kind === "edit-capster") && (
+              {(drawer.kind === "edit-package" || drawer.kind === "edit-drink") && (
                 <button
                   type="button"
+                  disabled={saving}
                   onClick={handleDelete}
-                  className="w-full py-2.5 rounded-xl border border-[#FECACA] hover:bg-[#FEF2F2] text-[#DC2626] text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl border border-[#FEE2E2] hover:bg-[#FEF2F2] text-[#DC2626] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  {drawer.kind === "edit-package" ? "Hapus paket" : "Hapus capster"}
+                  {drawer.kind === "edit-drink" ? "Hapus minuman" : "Hapus paket"}
                 </button>
               )}
             </div>

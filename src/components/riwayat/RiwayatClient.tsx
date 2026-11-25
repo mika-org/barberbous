@@ -33,7 +33,7 @@ export function RiwayatClient({
   storeInfo: ReceiptStoreInfo;
 }) {
   const [transactions, setTransactions] = useState<RiwayatTransaction[]>(initialTransactions);
-  const [filter, setFilter] = useState<"ALL" | "TUNAI" | "QRIS" | "MENUNGGU" | "REFUND">("ALL");
+  const [filter, setFilter] = useState<"ALL" | "TUNAI" | "QRIS" | "DEBIT" | "MENUNGGU" | "REFUND">("ALL");
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all">("today");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string>(initialTransactions[0]?.id ?? "");
@@ -57,6 +57,9 @@ export function RiwayatClient({
         return false;
       }
       if (filter === "QRIS" && (tx.paymentMethod !== "QRIS" || tx.status !== "SELESAI")) {
+        return false;
+      }
+      if (filter === "DEBIT" && (tx.paymentMethod !== "DEBIT" || tx.status !== "SELESAI")) {
         return false;
       }
       if (filter === "MENUNGGU" && tx.status !== "MENUNGGU_PEMBAYARAN") {
@@ -190,6 +193,7 @@ export function RiwayatClient({
               { id: "ALL", label: "Semua" },
               { id: "TUNAI", label: "Tunai" },
               { id: "QRIS", label: "QRIS" },
+              { id: "DEBIT", label: "Debit" },
               { id: "MENUNGGU", label: "Menunggu" },
               { id: "REFUND", label: "Refund" },
             ] as const
@@ -256,7 +260,11 @@ export function RiwayatClient({
                       </td>
                       <td className="py-3.5 px-4 text-[#0F172A]">{typeLabel}</td>
                       <td className="py-3.5 px-4 text-[#64748B]">
-                        {tx.paymentMethod === "TUNAI" ? "Tunai" : "QRIS"}
+                        {tx.paymentMethod === "TUNAI"
+                          ? "Tunai"
+                          : tx.paymentMethod === "DEBIT"
+                            ? "Debit"
+                            : "QRIS"}
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A]">
                         {formatRupiah(tx.total)}

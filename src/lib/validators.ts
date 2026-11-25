@@ -11,14 +11,43 @@ export const packageCreateSchema = z.object({
 
 export const packageUpdateSchema = packageCreateSchema.partial();
 
+export const drinkCreateSchema = z.object({
+  name: z.string().trim().min(1, "Nama minuman wajib diisi").max(60),
+  category: z.string().trim().min(1).max(60).optional().default("Minuman kemasan"),
+  price: z.coerce.number().int().min(0, "Harga tidak boleh negatif"),
+  stock: z.coerce.number().int().min(0, "Stok tidak boleh negatif").default(0),
+  minStock: z.coerce.number().int().min(0, "Batas minimum tidak boleh negatif").default(6),
+  imageUrl: z.string().trim().optional().nullable(),
+  badgeColor: z.string().trim().optional(),
+  isActive: z.boolean().optional().default(true),
+});
+
+export const drinkUpdateSchema = drinkCreateSchema.partial();
+
 export const capsterCreateSchema = z.object({
+  code: z.string().trim().min(1).max(20).optional(),
   name: z.string().trim().min(1, "Nama capster wajib diisi").max(60),
+  phone: z.string().trim().min(1, "No. telepon wajib diisi").max(30).optional().default("0812-0000-0000"),
   photoUrl: z.string().trim().optional().nullable(),
   bgColor: z.string().trim().optional(),
+  status: z.enum(["TERSEDIA", "MELAYANI", "ISTIRAHAT"]).optional().default("TERSEDIA"),
+  rating: z.coerce.number().min(0).max(5).optional().default(4.9),
+  joinedLabel: z.string().trim().max(30).optional().default("Jan 2026"),
   isActive: z.boolean().optional().default(true),
 });
 
 export const capsterUpdateSchema = capsterCreateSchema.partial();
+
+export const memberCreateSchema = z.object({
+  name: z.string().trim().min(1, "Nama lengkap wajib diisi").max(80),
+  phone: z.string().trim().min(6, "No. telepon wajib diisi").max(30),
+  birthDate: z.string().trim().max(20).optional().nullable(),
+  notes: z.string().trim().max(300).optional().nullable(),
+  points: z.coerce.number().int().min(0).optional().default(0),
+  isActive: z.boolean().optional().default(true),
+});
+
+export const memberUpdateSchema = memberCreateSchema.partial();
 
 export const bookingCreateSchema = z.object({
   customerName: z.string().trim().min(1, "Nama pelanggan wajib diisi").max(80),
@@ -43,35 +72,48 @@ export const voucherApplySchema = z.object({
   subtotal: z.coerce.number().int().min(0),
 });
 
-export const transactionItemInputSchema = z.object({
-  packageId: z.string().min(1, "Paket wajib dipilih"),
-  quantity: z.coerce.number().int().min(1, "Jumlah minimal 1").max(50),
-});
+export const transactionItemInputSchema = z
+  .object({
+    itemType: z.enum(["PACKAGE", "DRINK"]).optional().default("PACKAGE"),
+    packageId: z.string().min(1).optional(),
+    drinkId: z.string().min(1).optional(),
+    quantity: z.coerce.number().int().min(1, "Jumlah minimal 1").max(50),
+  })
+  .refine(
+    (item) =>
+      (item.itemType === "PACKAGE" && Boolean(item.packageId)) ||
+      (item.itemType === "DRINK" && Boolean(item.drinkId)) ||
+      Boolean(item.packageId),
+    { message: "Item transaksi tidak valid" }
+  );
 
-export const transactionCreateSchema = z.object({
-  orderType: z.enum(["WALK_IN", "BOOKING"]),
-  customerName: z.string().trim().min(1).max(80).default("Umum"),
-  isMember: z.boolean().default(false),
-  items: z.array(transactionItemInputSchema).min(1, "Pilih minimal 1 paket layanan").optional(),
-  packageId: z.string().min(1, "Paket wajib dipilih").optional(),
-  capsterId: z.string().min(1, "Capster wajib dipilih"),
-  bookingId: z.string().optional().nullable(),
-  discountType: z.enum(["PERCENT", "NOMINAL"]).optional().nullable(),
-  discountValue: z.coerce.number().int().min(0).default(0),
-  discountLabel: z.string().trim().max(80).optional().nullable(),
-  voucherCode: z.string().trim().max(30).optional().nullable(),
-  paymentMethod: z.enum(["TUNAI", "QRIS"]),
-  cashReceived: z.coerce.number().int().min(0).optional().nullable(),
-  notes: z.string().trim().max(300).optional().nullable(),
-  status: z.enum(["MENUNGGU_PEMBAYARAN", "SELESAI"]).optional().default("SELESAI"),
-}).refine((data) => (data.items && data.items.length > 0) || Boolean(data.packageId), {
-  message: "Pilih minimal 1 paket layanan",
-  path: ["items"],
-});
+export const transactionCreateSchema = z
+  .object({
+    orderType: z.enum(["WALK_IN", "BOOKING"]),
+    customerName: z.string().trim().min(1).max(80).default("Umum"),
+    isMember: z.boolean().default(false),
+    memberId: z.string().optional().nullable(),
+    items: z.array(transactionItemInputSchema).min(1, "Pilih minimal 1 item").optional(),
+    packageId: z.string().min(1).optional(),
+    capsterId: z.string().optional().nullable(),
+    bookingId: z.string().optional().nullable(),
+    discountType: z.enum(["PERCENT", "NOMINAL"]).optional().nullable(),
+    discountValue: z.coerce.number().int().min(0).default(0),
+    discountLabel: z.string().trim().max(80).optional().nullable(),
+    voucherCode: z.string().trim().max(30).optional().nullable(),
+    paymentMethod: z.enum(["TUNAI", "QRIS", "DEBIT"]),
+    cashReceived: z.coerce.number().int().min(0).optional().nullable(),
+    notes: z.string().trim().max(300).optional().nullable(),
+    status: z.enum(["MENUNGGU_PEMBAYARAN", "SELESAI"]).optional().default("SELESAI"),
+  })
+  .refine((data) => (data.items && data.items.length > 0) || Boolean(data.packageId), {
+    message: "Pilih minimal 1 item layanan atau minuman",
+    path: ["items"],
+  });
 
 export const transactionUpdateSchema = z.object({
   status: z.enum(["MENUNGGU_PEMBAYARAN", "SELESAI", "REFUND"]).optional(),
-  paymentMethod: z.enum(["TUNAI", "QRIS"]).optional(),
+  paymentMethod: z.enum(["TUNAI", "QRIS", "DEBIT"]).optional(),
   cashReceived: z.coerce.number().int().min(0).optional().nullable(),
 });
 
@@ -92,6 +134,7 @@ export const storeSettingUpdateSchema = z.object({
   priceIncludesTax: z.boolean().optional(),
   tunaiEnabled: z.boolean().optional(),
   qrisEnabled: z.boolean().optional(),
+  debitEnabled: z.boolean().optional(),
   qrisMerchantName: z.string().trim().max(80).optional(),
 });
 

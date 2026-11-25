@@ -6,6 +6,7 @@ import { formatDateShort, formatRupiah, formatTimeHHMM } from "@/lib/format";
 
 export interface ReceiptLineItem {
   id?: string;
+  itemType?: "PACKAGE" | "DRINK";
   packageName: string;
   packageDescription: string;
   unitPrice: number;
@@ -27,7 +28,7 @@ export interface ReceiptTransaction {
   taxAmount?: number;
   serviceFeeAmount?: number;
   total: number;
-  paymentMethod: "TUNAI" | "QRIS";
+  paymentMethod: "TUNAI" | "QRIS" | "DEBIT";
   cashReceived?: number | null;
   changeAmount?: number | null;
   cashierName: string;
@@ -190,7 +191,7 @@ export function ReceiptModal({
               <div key={it.id ?? `${it.packageName}-${idx}`}>
                 <div className="flex justify-between font-semibold">
                   <span>
-                    {it.quantity}× Paket {it.packageName}
+                    {it.quantity}× {it.itemType === "DRINK" ? it.packageName : `Paket ${it.packageName}`}
                   </span>
                   <span>{formatRupiah(it.lineTotal)}</span>
                 </div>

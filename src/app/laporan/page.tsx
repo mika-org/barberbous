@@ -6,8 +6,13 @@ import { LaporanClient } from "@/components/laporan/LaporanClient";
 
 async function LaporanDataLoader() {
   await connection();
-  const [packages, capsters] = await Promise.all([
+  const [packages, drinks, capsters] = await Promise.all([
     prisma.package.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.drink.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
       select: { id: true, name: true },
@@ -19,7 +24,7 @@ async function LaporanDataLoader() {
     }),
   ]);
 
-  return <LaporanClient packages={packages} capsters={capsters} />;
+  return <LaporanClient packages={packages} drinks={drinks} capsters={capsters} />;
 }
 
 export default function LaporanPage() {

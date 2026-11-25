@@ -21,6 +21,7 @@ export interface StoreSettingModel {
   priceIncludesTax: boolean;
   tunaiEnabled: boolean;
   qrisEnabled: boolean;
+  debitEnabled: boolean;
   qrisMerchantName: string;
 }
 
@@ -109,6 +110,7 @@ export function SetelanClient({
           priceIncludesTax: setting.priceIncludesTax,
           tunaiEnabled: setting.tunaiEnabled,
           qrisEnabled: setting.qrisEnabled,
+          debitEnabled: setting.debitEnabled,
           qrisMerchantName: setting.qrisMerchantName,
         }),
       });
@@ -477,6 +479,19 @@ export function SetelanClient({
                 <Toggle
                   checked={setting.qrisEnabled}
                   onChange={(val) => setSetting((s) => ({ ...s, qrisEnabled: val }))}
+                />
+              </div>
+
+              <div className="border-t border-[#F1F5F9] pt-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-[#0F172A]">Debit / Kartu (EDC)</p>
+                  <p className="text-[11px] text-[#64748B]">
+                    Terima kartu debit dan kredit melalui mesin EDC
+                  </p>
+                </div>
+                <Toggle
+                  checked={setting.debitEnabled}
+                  onChange={(val) => setSetting((s) => ({ ...s, debitEnabled: val }))}
                 />
               </div>
 

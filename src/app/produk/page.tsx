@@ -6,16 +6,16 @@ import { ProdukClient } from "@/components/produk/ProdukClient";
 
 async function ProdukDataLoader() {
   await connection();
-  const [packages, capsters] = await Promise.all([
+  const [packages, drinks] = await Promise.all([
     prisma.package.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.capster.findMany({
+    prisma.drink.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
-  return <ProdukClient initialPackages={packages} initialCapsters={capsters} />;
+  return <ProdukClient initialPackages={packages} initialDrinks={drinks} />;
 }
 
 export default function ProdukPage() {
@@ -24,7 +24,7 @@ export default function ProdukPage() {
       <Suspense
         fallback={
           <div className="flex-1 flex items-center justify-center text-xs text-[#64748B]">
-            Memuat produk &amp; capster...
+            Memuat produk &amp; minuman...
           </div>
         }
       >

@@ -7,6 +7,8 @@ import {
   LayoutGrid,
   Clock,
   Package,
+  Users,
+  Scissors,
   BarChart2,
   SlidersHorizontal,
   User,
@@ -17,6 +19,8 @@ const NAV_ITEMS = [
   { href: "/", label: "Kasir", icon: LayoutGrid },
   { href: "/riwayat", label: "Riwayat", icon: Clock },
   { href: "/produk", label: "Produk", icon: Package },
+  { href: "/member", label: "Member", icon: Users },
+  { href: "/capster", label: "Capster", icon: Scissors },
   { href: "/laporan", label: "Laporan", icon: BarChart2 },
   { href: "/setelan", label: "Setelan", icon: SlidersHorizontal },
 ] as const;
@@ -133,6 +137,7 @@ export function AppShell({
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={false}
                   className={`w-full py-2.5 px-1 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ${
                     isActive
                       ? "bg-[#0F172A] text-white shadow-xs"
@@ -186,7 +191,7 @@ export function AppShell({
       </div>
 
       {/* Mobile Bottom Navigation (< md) */}
-      <nav className="flex md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] px-2 items-center justify-around z-30 select-none">
+      <nav className="flex md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] px-1 items-center justify-around overflow-x-auto z-30 select-none">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -196,7 +201,8 @@ export function AppShell({
             <Link
               key={item.href}
               href={item.href}
-              className={`px-2.5 py-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+              prefetch={false}
+              className={`px-2 py-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9.5px] font-medium shrink-0 transition-colors ${
                 isActive ? "bg-[#0F172A] text-white" : "text-[#64748B]"
               }`}
             >
@@ -209,7 +215,7 @@ export function AppShell({
           type="button"
           onClick={handleLogout}
           title="Keluar"
-          className="px-2 py-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-[#DC2626] cursor-pointer"
+          className="px-2 py-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9.5px] font-medium text-[#DC2626] shrink-0 cursor-pointer"
         >
           <LogOut className="w-4 h-4" strokeWidth={1.9} />
           <span>Keluar</span>
