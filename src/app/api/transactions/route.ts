@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const filter = req.nextUrl.searchParams.get("filter") ?? "ALL"; // ALL | TUNAI | QRIS | REFUND
+    const filter = req.nextUrl.searchParams.get("filter") ?? "ALL"; // ALL | TUNAI | QRIS | MENUNGGU | REFUND
     const search = req.nextUrl.searchParams.get("search")?.trim() ?? "";
     const range = req.nextUrl.searchParams.get("range") ?? "today"; // today | 7d | 30d | all
 
@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
     } else if (filter === "QRIS") {
       where.paymentMethod = "QRIS";
       where.status = "SELESAI";
+    } else if (filter === "MENUNGGU") {
+      where.status = "MENUNGGU_PEMBAYARAN";
     } else if (filter === "REFUND") {
       where.status = "REFUND";
     }
@@ -53,6 +55,7 @@ export async function GET(req: NextRequest) {
     const [transactions, maxOrder] = await Promise.all([
       prisma.transaction.findMany({
         where,
+        include: { items: true },
         orderBy: [{ orderNumber: "desc" }],
         take: 100,
       }),
@@ -92,21 +95,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [pkg, capster, setting, maxOrder] = await Promise.all([
-      prisma.package.findUnique({ where: { id: parsed.data.packageId } }),
+    const requestedItems =
+      parsed.data.items && parsed.data.items.length > 0
+        ? parsed.data.items
+        : [{ packageId: parsed.data.packageId!, quantity: 1 }];
+
+    const packageIds = Array.from(new Set(requestedItems.map((i) => i.packageId)));
+
+    const [packages, capster, setting, maxOrder] = await Promise.all([
+      prisma.package.findMany({ where: { id: { in: packageIds } } }),
       prisma.capster.findUnique({ where: { id: parsed.data.capsterId } }),
       prisma.storeSetting.findUnique({ where: { id: "default" } }),
       prisma.transaction.aggregate({ _max: { orderNumber: true } }),
     ]);
 
-    if (!pkg) {
-      return NextResponse.json({ error: "Paket tidak ditemukan" }, { status: 404 });
+    const pkgById = new Map(packages.map((p) => [p.id, p]));
+    const resolvedItems = requestedItems.map((item) => {
+      const pkg = pkgById.get(item.packageId);
+      if (!pkg) return null;
+      return {
+        packageId: pkg.id,
+        packageName: pkg.name,
+        packageDescription: pkg.description,
+        unitPrice: pkg.price,
+        quantity: item.quantity,
+        lineTotal: pkg.price * item.quantity,
+      };
+    });
+
+    if (resolvedItems.some((i) => i === null)) {
+      return NextResponse.json({ error: "Salah satu paket tidak ditemukan" }, { status: 404 });
     }
+    const lineItems = resolvedItems as NonNullable<(typeof resolvedItems)[number]>[];
+
     if (!capster) {
       return NextResponse.json({ error: "Capster tidak ditemukan" }, { status: 404 });
     }
 
-    const subtotal = pkg.price;
+    const primaryItem = lineItems[0];
+    const totalQty = lineItems.reduce((sum, i) => sum + i.quantity, 0);
+    const summaryPkgName =
+      lineItems.length === 1
+        ? totalQty > 1
+          ? `${primaryItem.packageName} (${totalQty}×)`
+          : primaryItem.packageName
+        : `${primaryItem.packageName} +${lineItems.length - 1} lainnya`;
+    const summaryPkgDesc =
+      lineItems.length === 1
+        ? primaryItem.packageDescription
+        : lineItems.map((i) => `${i.quantity}× ${i.packageName}`).join(", ");
+
+    const subtotal = lineItems.reduce((sum, i) => sum + i.lineTotal, 0);
     let discountAmount = 0;
     if (parsed.data.discountType === "PERCENT" && parsed.data.discountValue > 0) {
       discountAmount = Math.round((subtotal * Math.min(100, parsed.data.discountValue)) / 100);
@@ -147,9 +186,9 @@ export async function POST(req: NextRequest) {
           orderType: parsed.data.orderType,
           customerName: parsed.data.customerName,
           isMember: parsed.data.isMember,
-          packageId: pkg.id,
-          packageName: pkg.name,
-          packageDescription: pkg.description,
+          packageId: primaryItem.packageId,
+          packageName: summaryPkgName,
+          packageDescription: summaryPkgDesc,
           capsterId: capster.id,
           capsterName: capster.name,
           bookingId: parsed.data.bookingId ?? null,
@@ -168,7 +207,11 @@ export async function POST(req: NextRequest) {
           status: parsed.data.status,
           notes: parsed.data.notes ?? null,
           cashierName: currentUser?.name ?? "Rehan",
+          items: {
+            create: lineItems,
+          },
         },
+        include: { items: true },
       });
 
       if (parsed.data.bookingId && parsed.data.status === "SELESAI") {

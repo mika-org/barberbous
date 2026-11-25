@@ -47,18 +47,19 @@ enum BookingStatus {
 }
 
 model Package {
-  id           String        @id @default(cuid())
-  name         String        @unique
-  description  String
-  price        Int
-  imageUrl     String?
-  badgeColor   String        @default("#EDE0CE")
-  isActive     Boolean       @default(true)
-  sortOrder    Int           @default(0)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  bookings     Booking[]
-  transactions Transaction[]
+  id               String            @id @default(cuid())
+  name             String            @unique
+  description      String
+  price            Int
+  imageUrl         String?
+  badgeColor       String            @default("#EDE0CE")
+  isActive         Boolean           @default(true)
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  bookings         Booking[]
+  transactions     Transaction[]
+  transactionItems TransactionItem[]
 
   @@schema("barberbous")
 }
@@ -144,6 +145,22 @@ model Transaction {
   cashierName        String            @default("Rehan")
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+  items              TransactionItem[]
+
+  @@schema("barberbous")
+}
+
+model TransactionItem {
+  id                 String      @id @default(cuid())
+  transactionId      String
+  transaction        Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  packageId          String
+  package            Package     @relation(fields: [packageId], references: [id])
+  packageName        String
+  packageDescription String
+  unitPrice          Int
+  quantity           Int         @default(1)
+  lineTotal          Int
 
   @@schema("barberbous")
 }

@@ -2,11 +2,14 @@
 
 import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { X, Banknote, QrCode, RefreshCw, Check } from "lucide-react";
+import { X, Banknote, QrCode, RefreshCw, Check, Clock } from "lucide-react";
 import { formatRupiah } from "@/lib/format";
 
 interface PembayaranModalProps {
   orderCode: string;
+  customerName: string;
+  capsterName: string;
+  totalQty: number;
   subtotal: number;
   discountAmount: number;
   discountLabel: string | null;
@@ -19,12 +22,16 @@ interface PembayaranModalProps {
   onConfirmPayment: (payload: {
     paymentMethod: "TUNAI" | "QRIS";
     cashReceived?: number;
+    status: "SELESAI" | "MENUNGGU_PEMBAYARAN";
   }) => Promise<void>;
   onClose: () => void;
 }
 
 export function PembayaranModal({
   orderCode,
+  customerName,
+  capsterName,
+  totalQty,
   subtotal,
   discountAmount,
   discountLabel,
@@ -37,11 +44,11 @@ export function PembayaranModal({
   onConfirmPayment,
   onClose,
 }: PembayaranModalProps) {
-  const [method, setMethod] = useState<"TUNAI" | "QRIS">(qrisEnabled ? "QRIS" : "TUNAI");
-  const [cashInput, setCashInput] = useState<string>(String(Math.max(total, 50000)));
+  const [method, setMethod] = useState<"TUNAI" | "QRIS">(tunaiEnabled ? "TUNAI" : "QRIS");
+  const [cashInput, setCashInput] = useState<string>(String(total));
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [qrNonce, setQrNonce] = useState<number>(1);
-  const [secondsLeft, setSecondsLeft] = useState<number>(282); // 04:42
+  const [secondsLeft, setSecondsLeft] = useState<number>(300);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,11 +76,12 @@ export function PembayaranModal({
   const secs = String(secondsLeft % 60).padStart(2, "0");
 
   const cashNumeric = Number(cashInput) || 0;
-  const changeAmount = Math.max(0, cashNumeric - total);
+  const isCashEnough = cashNumeric >= total;
+  const changeAmount = cashNumeric - total;
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (status: "SELESAI" | "MENUNGGU_PEMBAYARAN") => {
     setError(null);
-    if (method === "TUNAI" && cashNumeric < total) {
+    if (method === "TUNAI" && !isCashEnough) {
       setError("Nominal tunai masih kurang dari total tagihan");
       return;
     }
@@ -82,6 +90,7 @@ export function PembayaranModal({
       await onConfirmPayment({
         paymentMethod: method,
         cashReceived: method === "TUNAI" ? cashNumeric : undefined,
+        status,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Gagal memproses pembayaran");
@@ -95,7 +104,9 @@ export function PembayaranModal({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-[#0F172A]">Pembayaran</h2>
-            <p className="text-xs text-[#64748B] mt-0.5">Pesanan {orderCode}</p>
+            <p className="text-xs text-[#64748B] mt-0.5">
+              Pesanan {orderCode} · {customerName} · Capster {capsterName}
+            </p>
           </div>
           <button
             type="button"
@@ -115,7 +126,7 @@ export function PembayaranModal({
 
               <div className="mt-5 pt-4 border-t border-[#E5E7EB] space-y-2.5 text-xs">
                 <div className="flex justify-between text-[#64748B]">
-                  <span>Subtotal (1 layanan)</span>
+                  <span>Subtotal ({totalQty} layanan)</span>
                   <span className="text-[#0F172A] font-medium">{formatRupiah(subtotal)}</span>
                 </div>
                 {discountAmount > 0 && (
@@ -196,10 +207,10 @@ export function PembayaranModal({
                       <img
                         src={qrDataUrl}
                         alt="QRIS Code"
-                        className="w-[180px] h-[180px] block"
+                        className="w-[175px] h-[175px] block"
                       />
                     ) : (
-                      <div className="w-[180px] h-[180px] bg-[#F1F5F9] animate-pulse rounded-lg" />
+                      <div className="w-[175px] h-[175px] bg-[#F1F5F9] animate-pulse rounded-lg" />
                     )}
                   </div>
                   <p className="text-xs text-[#64748B] mt-3">
@@ -218,9 +229,22 @@ export function PembayaranModal({
                     ))}
                   </div>
 
-                  <div className="mt-4 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#FEF3C7] text-[#B45309] text-xs font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#D97706]" />
-                    Menunggu pembayaran · {mins}:{secs}
+                  <div className="mt-3.5 flex items-center gap-2">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FEF3C7] text-[#B45309] text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D97706]" />
+                      Menunggu · {mins}:{secs}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQrNonce((n) => n + 1);
+                        setSecondsLeft(300);
+                      }}
+                      className="px-3 py-1.5 rounded-full border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-medium text-[#0F172A] flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Buat ulang QR
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -239,7 +263,7 @@ export function PembayaranModal({
                     />
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
                       { label: "Uang pas", val: total },
                       { label: "Rp50.000", val: 50000 },
@@ -262,9 +286,15 @@ export function PembayaranModal({
                   </div>
 
                   <div className="bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl p-4 flex items-center justify-between">
-                    <span className="text-xs font-medium text-[#64748B]">Kembalian</span>
-                    <span className="text-lg font-bold text-[#15803D]">
-                      {formatRupiah(changeAmount)}
+                    <span className="text-xs font-medium text-[#64748B]">
+                      {isCashEnough ? "Kembalian" : "Nominal kurang"}
+                    </span>
+                    <span
+                      className={`text-lg font-bold ${
+                        isCashEnough ? "text-[#15803D]" : "text-[#DC2626]"
+                      }`}
+                    >
+                      {formatRupiah(Math.abs(changeAmount))}
                     </span>
                   </div>
                 </div>
@@ -276,26 +306,24 @@ export function PembayaranModal({
             </div>
 
             {method === "QRIS" ? (
-              <div className="grid grid-cols-2 gap-3 mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-6">
                 <button
                   type="button"
-                  onClick={() => {
-                    setQrNonce((n) => n + 1);
-                    setSecondsLeft(300);
-                  }}
-                  className="py-2.5 px-4 rounded-xl border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={submitting}
+                  onClick={() => handleSubmit("MENUNGGU_PEMBAYARAN")}
+                  className="py-2.5 px-4 rounded-xl border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Buat ulang QR
+                  <Clock className="w-3.5 h-3.5 text-[#D97706]" />
+                  Simpan Menunggu Bayar
                 </button>
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={handleSubmit}
+                  onClick={() => handleSubmit("SELESAI")}
                   className="py-2.5 px-4 rounded-xl bg-[#15803D] hover:bg-[#166534] text-xs font-semibold text-white flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  {submitting ? "Memproses..." : "Cek status pembayaran"}
+                  {submitting ? "Memproses..." : "Konfirmasi Lunas"}
                 </button>
               </div>
             ) : (
@@ -309,12 +337,12 @@ export function PembayaranModal({
                 </button>
                 <button
                   type="button"
-                  disabled={submitting}
-                  onClick={handleSubmit}
-                  className="py-2.5 px-4 rounded-xl bg-[#15803D] hover:bg-[#166534] text-xs font-semibold text-white flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  disabled={submitting || !isCashEnough}
+                  onClick={() => handleSubmit("SELESAI")}
+                  className="py-2.5 px-4 rounded-xl bg-[#15803D] hover:bg-[#166534] text-xs font-semibold text-white flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  {submitting ? "Menyimpan..." : "Selesaikan pembayaran"}
+                  {submitting ? "Menyimpan..." : "Selesaikan Pembayaran"}
                 </button>
               </div>
             )}

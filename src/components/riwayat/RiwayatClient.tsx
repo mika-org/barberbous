@@ -7,6 +7,7 @@ import {
   Printer,
   CloudDownload,
   RotateCcw,
+  Check,
   X,
 } from "lucide-react";
 import { formatDateShort, formatRupiah, formatTimeHHMM } from "@/lib/format";
@@ -32,7 +33,7 @@ export function RiwayatClient({
   storeInfo: ReceiptStoreInfo;
 }) {
   const [transactions, setTransactions] = useState<RiwayatTransaction[]>(initialTransactions);
-  const [filter, setFilter] = useState<"ALL" | "TUNAI" | "QRIS" | "REFUND">("ALL");
+  const [filter, setFilter] = useState<"ALL" | "TUNAI" | "QRIS" | "MENUNGGU" | "REFUND">("ALL");
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all">("today");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string>(initialTransactions[0]?.id ?? "");
@@ -56,6 +57,9 @@ export function RiwayatClient({
         return false;
       }
       if (filter === "QRIS" && (tx.paymentMethod !== "QRIS" || tx.status !== "SELESAI")) {
+        return false;
+      }
+      if (filter === "MENUNGGU" && tx.status !== "MENUNGGU_PEMBAYARAN") {
         return false;
       }
       if (filter === "REFUND" && tx.status !== "REFUND") {
@@ -86,6 +90,26 @@ export function RiwayatClient({
         .reduce((acc, t) => acc + t.total, 0),
     [transactions]
   );
+
+  const handleSettlePending = async (tx: RiwayatTransaction) => {
+    if (tx.status !== "MENUNGGU_PEMBAYARAN") return;
+    setUpdatingRefund(true);
+    try {
+      const res = await fetch(`/api/transactions/${tx.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "SELESAI" }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setTransactions((prev) =>
+          prev.map((item) => (item.id === tx.id ? { ...item, ...json.data } : item))
+        );
+      }
+    } finally {
+      setUpdatingRefund(false);
+    }
+  };
 
   const handleRefund = async (tx: RiwayatTransaction) => {
     if (tx.status === "REFUND") return;
@@ -166,6 +190,7 @@ export function RiwayatClient({
               { id: "ALL", label: "Semua" },
               { id: "TUNAI", label: "Tunai" },
               { id: "QRIS", label: "QRIS" },
+              { id: "MENUNGGU", label: "Menunggu" },
               { id: "REFUND", label: "Refund" },
             ] as const
           ).map((item) => (
@@ -324,16 +349,35 @@ export function RiwayatClient({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#64748B]">Paket</span>
-                  <span className="font-semibold text-[#0F172A]">
-                    {selectedTx.packageName}
-                  </span>
-                </div>
-                <div className="flex justify-between">
                   <span className="text-[#64748B]">Pelanggan</span>
                   <span className="font-semibold text-[#0F172A]">
                     {selectedTx.customerName}
                   </span>
+                </div>
+                <div className="pt-2 border-t border-[#F1F5F9] space-y-1.5">
+                  <span className="text-[#64748B] block">Layanan</span>
+                  {(selectedTx.items && selectedTx.items.length > 0
+                    ? selectedTx.items
+                    : [
+                        {
+                          packageName: selectedTx.packageName,
+                          packageDescription: selectedTx.packageDescription,
+                          unitPrice: selectedTx.subtotal,
+                          quantity: 1,
+                          lineTotal: selectedTx.subtotal,
+                        },
+                      ]
+                  ).map((it, idx) => (
+                    <div
+                      key={it.id ?? `${it.packageName}-${idx}`}
+                      className="flex justify-between font-medium text-[#0F172A]"
+                    >
+                      <span>
+                        {it.quantity}× {it.packageName}
+                      </span>
+                      <span>{formatRupiah(it.lineTotal)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -395,6 +439,18 @@ export function RiwayatClient({
             </div>
 
             <div className="space-y-2.5 pt-6">
+              {selectedTx.status === "MENUNGGU_PEMBAYARAN" && (
+                <button
+                  type="button"
+                  disabled={updatingRefund}
+                  onClick={() => handleSettlePending(selectedTx)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#15803D] hover:bg-[#166534] text-white flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Tandai Lunas
+                </button>
+              )}
+
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"

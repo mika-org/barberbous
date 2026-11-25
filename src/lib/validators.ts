@@ -43,11 +43,17 @@ export const voucherApplySchema = z.object({
   subtotal: z.coerce.number().int().min(0),
 });
 
+export const transactionItemInputSchema = z.object({
+  packageId: z.string().min(1, "Paket wajib dipilih"),
+  quantity: z.coerce.number().int().min(1, "Jumlah minimal 1").max(50),
+});
+
 export const transactionCreateSchema = z.object({
   orderType: z.enum(["WALK_IN", "BOOKING"]),
   customerName: z.string().trim().min(1).max(80).default("Umum"),
   isMember: z.boolean().default(false),
-  packageId: z.string().min(1, "Paket wajib dipilih"),
+  items: z.array(transactionItemInputSchema).min(1, "Pilih minimal 1 paket layanan").optional(),
+  packageId: z.string().min(1, "Paket wajib dipilih").optional(),
   capsterId: z.string().min(1, "Capster wajib dipilih"),
   bookingId: z.string().optional().nullable(),
   discountType: z.enum(["PERCENT", "NOMINAL"]).optional().nullable(),
@@ -58,6 +64,9 @@ export const transactionCreateSchema = z.object({
   cashReceived: z.coerce.number().int().min(0).optional().nullable(),
   notes: z.string().trim().max(300).optional().nullable(),
   status: z.enum(["MENUNGGU_PEMBAYARAN", "SELESAI"]).optional().default("SELESAI"),
+}).refine((data) => (data.items && data.items.length > 0) || Boolean(data.packageId), {
+  message: "Pilih minimal 1 paket layanan",
+  path: ["items"],
 });
 
 export const transactionUpdateSchema = z.object({

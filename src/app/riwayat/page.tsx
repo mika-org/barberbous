@@ -12,6 +12,7 @@ async function RiwayatDataLoader() {
   const [transactions, setting] = await Promise.all([
     prisma.transaction.findMany({
       where: { createdAt: { gte: startOfDay } },
+      include: { items: true },
       orderBy: [{ orderNumber: "desc" }],
       take: 100,
     }),

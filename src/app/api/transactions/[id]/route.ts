@@ -45,6 +45,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/transactio
           cashReceived,
           changeAmount,
         },
+        include: { items: true },
       });
 
       if (existing.bookingId && nextStatus === "SELESAI") {

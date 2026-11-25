@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
           status: "SELESAI",
           createdAt: { gte: start, lte: end },
         },
+        include: { items: true },
         orderBy: { createdAt: "asc" },
       }),
       prisma.transaction.findMany({
@@ -85,14 +86,41 @@ export async function GET(req: NextRequest) {
       hourly[0] ?? { hour: "13:00", amount: 0, amountThousands: 0 }
     );
 
+    // Helper to expand transaction items (supports multi-item & legacy single-package rows)
+    const getTxPackageLines = (t: (typeof transactions)[number]) => {
+      if (t.items && t.items.length > 0) {
+        const sub = t.items.reduce((s, it) => s + it.lineTotal, 0) || t.subtotal || 1;
+        return t.items.map((it) => ({
+          packageId: it.packageId,
+          quantity: it.quantity,
+          revenueShare: Math.round((it.lineTotal / sub) * t.total),
+          orderType: t.orderType,
+          capsterId: t.capsterId,
+        }));
+      }
+      return [
+        {
+          packageId: t.packageId,
+          quantity: 1,
+          revenueShare: t.total,
+          orderType: t.orderType,
+          capsterId: t.capsterId,
+        },
+      ];
+    };
+
+    const allLines = transactions.flatMap(getTxPackageLines);
+    const totalServicesSold = allLines.reduce((s, l) => s + l.quantity, 0);
+
     // Per-package aggregation
     const packageStats = packages.map((p) => {
-      const rows = transactions.filter((t) => t.packageId === p.id);
-      const revenue = rows.reduce((s, t) => s + t.total, 0);
+      const rows = allLines.filter((l) => l.packageId === p.id);
+      const sold = rows.reduce((s, r) => s + r.quantity, 0);
+      const revenue = rows.reduce((s, r) => s + r.revenueShare, 0);
       return {
         id: p.id,
         name: p.name,
-        sold: rows.length,
+        sold,
         revenue,
         contributionPct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100) : 0,
       };
@@ -101,11 +129,15 @@ export async function GET(req: NextRequest) {
     // Per-capster aggregation
     const capsterStats = capsters.map((c) => {
       const rows = transactions.filter((t) => t.capsterId === c.id);
+      const sold = rows.reduce(
+        (s, t) => s + (t.items?.length ? t.items.reduce((q, it) => q + it.quantity, 0) : 1),
+        0
+      );
       const revenue = rows.reduce((s, t) => s + t.total, 0);
       return {
         id: c.id,
         name: c.name,
-        sold: rows.length,
+        sold,
         revenue,
         contributionPct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100) : 0,
       };
@@ -122,17 +154,23 @@ export async function GET(req: NextRequest) {
     if (packageFilter !== "ALL") {
       const selectedPkg = packages.find((p) => p.id === packageFilter);
       if (selectedPkg) {
-        const pkgTx = transactions.filter((t) => t.packageId === selectedPkg.id);
-        const pkgRevenue = pkgTx.reduce((s, t) => s + t.total, 0);
-        const pkgWalkIn = pkgTx.filter((t) => t.orderType === "WALK_IN").length;
-        const pkgBooking = pkgTx.filter((t) => t.orderType === "BOOKING").length;
+        const pkgLines = allLines.filter((l) => l.packageId === selectedPkg.id);
+        const pkgRevenue = pkgLines.reduce((s, l) => s + l.revenueShare, 0);
+        const pkgSold = pkgLines.reduce((s, l) => s + l.quantity, 0);
+        const pkgWalkIn = pkgLines
+          .filter((l) => l.orderType === "WALK_IN")
+          .reduce((s, l) => s + l.quantity, 0);
+        const pkgBooking = pkgLines
+          .filter((l) => l.orderType === "BOOKING")
+          .reduce((s, l) => s + l.quantity, 0);
         const byCapster = capsters.map((c) => {
-          const rows = pkgTx.filter((t) => t.capsterId === c.id);
-          const rev = rows.reduce((s, t) => s + t.total, 0);
+          const rows = pkgLines.filter((l) => l.capsterId === c.id);
+          const sold = rows.reduce((s, r) => s + r.quantity, 0);
+          const rev = rows.reduce((s, r) => s + r.revenueShare, 0);
           return {
             id: c.id,
             name: c.name,
-            sold: rows.length,
+            sold,
             revenue: rev,
             contributionPct: pkgRevenue > 0 ? Math.round((rev / pkgRevenue) * 100) : 0,
           };
@@ -143,12 +181,12 @@ export async function GET(req: NextRequest) {
           package: selectedPkg,
           revenue: pkgRevenue,
           revenuePct: totalRevenue > 0 ? Math.round((pkgRevenue / totalRevenue) * 100) : 0,
-          sold: pkgTx.length,
-          totalSoldAll: totalCount,
+          sold: pkgSold,
+          totalSoldAll: totalServicesSold,
           walkInCount: pkgWalkIn,
           bookingCount: pkgBooking,
-          walkInPct: pkgTx.length > 0 ? Math.round((pkgWalkIn / pkgTx.length) * 100) : 0,
-          bookingPct: pkgTx.length > 0 ? Math.round((pkgBooking / pkgTx.length) * 100) : 0,
+          walkInPct: pkgSold > 0 ? Math.round((pkgWalkIn / pkgSold) * 100) : 0,
+          bookingPct: pkgSold > 0 ? Math.round((pkgBooking / pkgSold) * 100) : 0,
           topCapster,
           byCapster,
         };
@@ -161,16 +199,23 @@ export async function GET(req: NextRequest) {
       const selectedCap = capsters.find((c) => c.id === capsterFilter);
       if (selectedCap) {
         const capTx = transactions.filter((t) => t.capsterId === selectedCap.id);
+        const capLines = capTx.flatMap(getTxPackageLines);
         const capRevenue = capTx.reduce((s, t) => s + t.total, 0);
-        const capWalkIn = capTx.filter((t) => t.orderType === "WALK_IN").length;
-        const capBooking = capTx.filter((t) => t.orderType === "BOOKING").length;
+        const capSold = capLines.reduce((s, l) => s + l.quantity, 0);
+        const capWalkIn = capLines
+          .filter((l) => l.orderType === "WALK_IN")
+          .reduce((s, l) => s + l.quantity, 0);
+        const capBooking = capLines
+          .filter((l) => l.orderType === "BOOKING")
+          .reduce((s, l) => s + l.quantity, 0);
         const byPackage = packages.map((p) => {
-          const rows = capTx.filter((t) => t.packageId === p.id);
-          const rev = rows.reduce((s, t) => s + t.total, 0);
+          const rows = capLines.filter((l) => l.packageId === p.id);
+          const sold = rows.reduce((s, r) => s + r.quantity, 0);
+          const rev = rows.reduce((s, r) => s + r.revenueShare, 0);
           return {
             id: p.id,
             name: p.name,
-            sold: rows.length,
+            sold,
             revenue: rev,
             contributionPct: capRevenue > 0 ? Math.round((rev / capRevenue) * 100) : 0,
           };
@@ -181,12 +226,12 @@ export async function GET(req: NextRequest) {
           capster: selectedCap,
           revenue: capRevenue,
           revenuePct: totalRevenue > 0 ? Math.round((capRevenue / totalRevenue) * 100) : 0,
-          sold: capTx.length,
-          totalSoldAll: totalCount,
+          sold: capSold,
+          totalSoldAll: totalServicesSold,
           walkInCount: capWalkIn,
           bookingCount: capBooking,
-          walkInPct: capTx.length > 0 ? Math.round((capWalkIn / capTx.length) * 100) : 0,
-          bookingPct: capTx.length > 0 ? Math.round((capBooking / capTx.length) * 100) : 0,
+          walkInPct: capSold > 0 ? Math.round((capWalkIn / capSold) * 100) : 0,
+          bookingPct: capSold > 0 ? Math.round((capBooking / capSold) * 100) : 0,
           topPackage,
           byPackage,
         };
