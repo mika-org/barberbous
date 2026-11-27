@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { capsterUpdateSchema } from "@/lib/validators";
+import { requireManager } from "@/lib/rbac";
 
 export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/capsters/[id]">) {
   try {
@@ -12,6 +13,14 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/capsters/[
         { error: parsed.error.issues[0]?.message ?? "Data capster tidak valid" },
         { status: 400 }
       );
+    }
+
+    // Allow Kasir to update status only; profile/commission/active changes require Owner/Admin
+    const keys = Object.keys(parsed.data);
+    const isStatusOnly = keys.length === 1 && keys[0] === "status";
+    if (!isStatusOnly) {
+      const guard = await requireManager();
+      if (!guard.ok) return guard.response;
     }
 
     const updated = await prisma.capster.update({
@@ -26,6 +35,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/capsters/[
 }
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/capsters/[id]">) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const { id } = await ctx.params;
     const txCount = await prisma.transaction.count({ where: { capsterId: id } });
@@ -41,6 +53,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/capsters
       });
     }
     await prisma.booking.deleteMany({ where: { capsterId: id } });
+    await prisma.activeService.deleteMany({ where: { capsterId: id } });
     await prisma.capster.delete({ where: { id } });
     return NextResponse.json({ deleted: true });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { drinkCreateSchema } from "@/lib/validators";
+import { requireManager } from "@/lib/rbac";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await req.json();
     const parsed = drinkCreateSchema.safeParse(body);

@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { SetelanClient } from "@/components/setelan/SetelanClient";
 
 async function SetelanDataLoader() {
   await connection();
-  const [setting, staff] = await Promise.all([
+  const [user, setting, staff, vouchers] = await Promise.all([
+    getCurrentUser(),
     prisma.storeSetting.upsert({
       where: { id: "default" },
       update: {},
@@ -23,9 +25,19 @@ async function SetelanDataLoader() {
       },
       orderBy: { createdAt: "asc" },
     }),
+    prisma.voucher.findMany({
+      orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+    }),
   ]);
 
-  return <SetelanClient initialSetting={setting} initialStaff={staff} />;
+  return (
+    <SetelanClient
+      initialSetting={setting}
+      initialStaff={staff}
+      initialVouchers={vouchers}
+      userRole={user?.role ?? "Kasir"}
+    />
+  );
 }
 
 export default function SetelanPage() {

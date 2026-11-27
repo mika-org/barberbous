@@ -24,6 +24,11 @@ export const drinkCreateSchema = z.object({
 
 export const drinkUpdateSchema = drinkCreateSchema.partial();
 
+export const drinkRestockSchema = z.object({
+  delta: z.coerce.number().int().min(1, "Jumlah restock minimal 1 botol").max(1000),
+  note: z.string().trim().max(120).optional().default("Restock kulkas"),
+});
+
 export const capsterCreateSchema = z.object({
   code: z.string().trim().min(1).max(20).optional(),
   name: z.string().trim().min(1, "Nama capster wajib diisi").max(60),
@@ -32,6 +37,7 @@ export const capsterCreateSchema = z.object({
   bgColor: z.string().trim().optional(),
   status: z.enum(["TERSEDIA", "MELAYANI", "ISTIRAHAT"]).optional().default("TERSEDIA"),
   rating: z.coerce.number().min(0).max(5).optional().default(4.9),
+  commissionPct: z.coerce.number().int().min(0).max(100).optional().default(40),
   joinedLabel: z.string().trim().max(30).optional().default("Jan 2026"),
   isActive: z.boolean().optional().default(true),
 });
@@ -49,6 +55,23 @@ export const memberCreateSchema = z.object({
 
 export const memberUpdateSchema = memberCreateSchema.partial();
 
+export const voucherCreateSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(2, "Kode promo minimal 2 karakter")
+    .max(24)
+    .regex(/^[A-Z0-9_-]+$/, "Kode promo hanya boleh huruf kapital, angka, strip, atau underscore"),
+  label: z.string().trim().min(1, "Deskripsi promo wajib diisi").max(80),
+  discountType: z.enum(["PERCENT", "NOMINAL"]),
+  discountValue: z.coerce.number().int().min(1, "Nilai diskon minimal 1"),
+  minSubtotal: z.coerce.number().int().min(0).optional().default(0),
+  isActive: z.boolean().optional().default(true),
+});
+
+export const voucherUpdateSchema = voucherCreateSchema.partial();
+
 export const bookingCreateSchema = z.object({
   customerName: z.string().trim().min(1, "Nama pelanggan wajib diisi").max(80),
   customerPhone: z.string().trim().max(30).optional().nullable(),
@@ -64,7 +87,35 @@ export const bookingUpdateSchema = z.object({
   packageId: z.string().optional(),
   capsterId: z.string().optional(),
   scheduledTime: z.string().trim().optional(),
+  customerPhone: z.string().trim().max(30).optional().nullable(),
   notes: z.string().trim().max(300).optional().nullable(),
+});
+
+export const activeServiceCreateSchema = z.object({
+  customerName: z.string().trim().min(1).max(80).default("Umum"),
+  isMember: z.boolean().optional().default(false),
+  memberId: z.string().optional().nullable(),
+  packageId: z.string().min(1, "Paket wajib dipilih"),
+  capsterId: z.string().min(1, "Capster wajib dipilih untuk mulai cukur"),
+  bookingId: z.string().optional().nullable(),
+  notes: z.string().trim().max(300).optional().nullable(),
+});
+
+export const shiftOpenSchema = z.object({
+  openingCash: z.coerce.number().int().min(0, "Modal awal tidak boleh negatif"),
+  notes: z.string().trim().max(200).optional().nullable(),
+});
+
+export const shiftCloseSchema = z.object({
+  closingCashActual: z.coerce.number().int().min(0, "Uang aktual tidak boleh negatif"),
+  notes: z.string().trim().max(200).optional().nullable(),
+});
+
+export const cashExpenseCreateSchema = z.object({
+  shiftId: z.string().min(1),
+  amount: z.coerce.number().int().min(100, "Nominal minimal Rp100"),
+  description: z.string().trim().min(1, "Keterangan pengeluaran wajib diisi").max(120),
+  category: z.string().trim().max(40).optional().default("Operasional"),
 });
 
 export const voucherApplySchema = z.object({
@@ -97,10 +148,12 @@ export const transactionCreateSchema = z
     packageId: z.string().min(1).optional(),
     capsterId: z.string().optional().nullable(),
     bookingId: z.string().optional().nullable(),
+    activeServiceId: z.string().optional().nullable(),
     discountType: z.enum(["PERCENT", "NOMINAL"]).optional().nullable(),
     discountValue: z.coerce.number().int().min(0).default(0),
     discountLabel: z.string().trim().max(80).optional().nullable(),
     voucherCode: z.string().trim().max(30).optional().nullable(),
+    redeemedPoints: z.coerce.number().int().min(0).default(0),
     paymentMethod: z.enum(["TUNAI", "QRIS", "DEBIT"]),
     cashReceived: z.coerce.number().int().min(0).optional().nullable(),
     notes: z.string().trim().max(300).optional().nullable(),
@@ -115,6 +168,7 @@ export const transactionUpdateSchema = z.object({
   status: z.enum(["MENUNGGU_PEMBAYARAN", "SELESAI", "REFUND"]).optional(),
   paymentMethod: z.enum(["TUNAI", "QRIS", "DEBIT"]).optional(),
   cashReceived: z.coerce.number().int().min(0).optional().nullable(),
+  ownerPassword: z.string().optional(),
 });
 
 export const storeSettingUpdateSchema = z.object({

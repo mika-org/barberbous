@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { X, Percent } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { X, Percent, Ticket } from "lucide-react";
 import { formatRupiah } from "@/lib/format";
 
 export interface DiscountState {
@@ -62,6 +62,25 @@ export function DiskonModal({
       : null
   );
   const [checkingVoucher, setCheckingVoucher] = useState(false);
+  const [availableVouchers, setAvailableVouchers] = useState<
+    Array<{
+      id: string;
+      code: string;
+      label: string;
+      discountType: "PERCENT" | "NOMINAL";
+      discountValue: number;
+      minSubtotal: number;
+    }>
+  >([]);
+
+  useEffect(() => {
+    fetch("/api/vouchers?activeOnly=true")
+      .then((r) => r.json())
+      .then((json) => {
+        if (Array.isArray(json.data)) setAvailableVouchers(json.data);
+      })
+      .catch(() => {});
+  }, []);
 
   const computePreview = (): DiscountState => {
     if (voucherApplied) {
@@ -279,6 +298,52 @@ export function DiskonModal({
             </div>
             {voucherError && (
               <p className="text-[11px] text-[#DC2626] mt-1">{voucherError}</p>
+            )}
+
+            {availableVouchers.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {availableVouchers.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={async () => {
+                      setTab("VOUCHER");
+                      setVoucherCode(v.code);
+                      setVoucherError(null);
+                      const res = await fetch("/api/vouchers/apply", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ code: v.code, subtotal }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok) {
+                        setVoucherError(json.error ?? "Kode tidak dapat dipakai");
+                        setVoucherApplied(null);
+                      } else {
+                        setVoucherApplied({
+                          code: json.data.code,
+                          label: json.data.label,
+                          type: json.data.discountType,
+                          value: json.data.discountValue,
+                          amount: json.data.discountAmount,
+                        });
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition cursor-pointer ${
+                      voucherApplied?.code === v.code
+                        ? "border-[#15803D] bg-[#F0FDF4] text-[#15803D]"
+                        : "border-[#E5E7EB] bg-[#F8FAFC] text-[#0F172A] hover:border-[#0F172A]"
+                    }`}
+                  >
+                    <Ticket className="w-3 h-3" />
+                    {v.code} (
+                    {v.discountType === "PERCENT"
+                      ? `${v.discountValue}%`
+                      : formatRupiah(v.discountValue)}
+                    )
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 

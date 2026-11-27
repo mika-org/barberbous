@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { staffUpdateSchema } from "@/lib/validators";
 import { hashPassword } from "@/lib/auth";
+import { requireManager } from "@/lib/rbac";
 
 const safeStaffSelect = {
   id: true,
@@ -15,6 +16,9 @@ const safeStaffSelect = {
 };
 
 export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/staff/[id]">) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const { id } = await ctx.params;
     const body = await req.json();
@@ -56,6 +60,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/staff/[id]
 }
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/staff/[id]">) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const { id } = await ctx.params;
     await prisma.staffUser.delete({ where: { id } });

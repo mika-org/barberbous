@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { storeSettingUpdateSchema } from "@/lib/validators";
+import { requireManager } from "@/lib/rbac";
 
 export async function GET() {
   try {
@@ -17,6 +18,9 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await req.json();
     const parsed = storeSettingUpdateSchema.safeParse(body);

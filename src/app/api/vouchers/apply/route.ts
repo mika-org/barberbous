@@ -22,6 +22,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (voucher.minSubtotal > 0 && parsed.data.subtotal < voucher.minSubtotal) {
+      return NextResponse.json(
+        {
+          error: `Minimal transaksi Rp${voucher.minSubtotal.toLocaleString("id-ID")} untuk memakai promo ${voucher.code}`,
+        },
+        { status: 400 }
+      );
+    }
+
     const discountAmount =
       voucher.discountType === "PERCENT"
         ? Math.round((parsed.data.subtotal * voucher.discountValue) / 100)

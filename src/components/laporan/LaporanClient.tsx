@@ -10,6 +10,8 @@ interface ReportStatItem {
   sold: number;
   stock?: number;
   revenue: number;
+  commissionPct?: number;
+  commissionAmount?: number;
   contributionPct: number;
 }
 
@@ -64,6 +66,8 @@ interface ReportData {
   capsterDetail: {
     capster: { id: string; name: string };
     revenue: number;
+    commissionPct?: number;
+    commissionAmount?: number;
     revenuePct: number;
     sold: number;
     totalSoldAll: number;
@@ -785,12 +789,13 @@ export function LaporanClient({
                       {rangeText} · {capsters.length} capster
                     </p>
                   </div>
-                  <table className="w-full min-w-[500px] text-left border-collapse text-xs">
+                  <table className="w-full min-w-[560px] text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
                         <th className="py-3 px-5">Capster</th>
                         <th className="py-3 px-5 text-right">Layanan</th>
                         <th className="py-3 px-5 text-right">Pendapatan</th>
+                        <th className="py-3 px-5 text-right">Komisi Bagi Hasil</th>
                         <th className="py-3 px-5">Kontribusi</th>
                       </tr>
                     </thead>
@@ -802,7 +807,12 @@ export function LaporanClient({
                               <div className="w-7 h-7 rounded-lg bg-[#EDE0CE] text-[#3F3A32] font-bold text-[11px] flex items-center justify-center">
                                 {item.name.slice(0, 1)}
                               </div>
-                              <span className="font-semibold text-[#0F172A]">{item.name}</span>
+                              <div>
+                                <span className="font-semibold text-[#0F172A]">{item.name}</span>
+                                <span className="text-[10px] text-[#94A3B8] ml-1.5">
+                                  ({item.commissionPct ?? 40}%)
+                                </span>
+                              </div>
                             </div>
                           </td>
                           <td className="py-3.5 px-5 text-right tabular-nums text-[#0F172A]">
@@ -810,6 +820,9 @@ export function LaporanClient({
                           </td>
                           <td className="py-3.5 px-5 text-right font-semibold tabular-nums text-[#0F172A]">
                             {formatRupiah(item.revenue)}
+                          </td>
+                          <td className="py-3.5 px-5 text-right font-semibold tabular-nums text-[#15803D]">
+                            {formatRupiah(item.commissionAmount ?? 0)}
                           </td>
                           <td className="py-3.5 px-5">
                             <div className="flex items-center gap-2.5">
@@ -836,6 +849,14 @@ export function LaporanClient({
                             report.capsterStats.reduce((s, c) => s + c.revenue, 0)
                           )}
                         </td>
+                        <td className="py-3.5 px-5 text-right tabular-nums text-[#15803D]">
+                          {formatRupiah(
+                            report.capsterStats.reduce(
+                              (s, c) => s + (c.commissionAmount ?? 0),
+                              0
+                            )
+                          )}
+                        </td>
                         <td className="py-3.5 px-5">
                           <div className="flex items-center gap-2.5">
                             <div className="w-28 h-1.5 rounded-full bg-[#0F172A]" />
@@ -847,7 +868,7 @@ export function LaporanClient({
                   </table>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
                   <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
                     <p className="text-[11px] text-[#64748B]">
                       Pendapatan {report.capsterDetail.capster.name}
@@ -858,6 +879,15 @@ export function LaporanClient({
                     <p className="text-[11px] text-[#64748B] mt-1">
                       {report.capsterDetail.revenuePct}% dari total toko
                     </p>
+                  </div>
+                  <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
+                    <p className="text-[11px] text-[#64748B]">
+                      Komisi ({report.capsterDetail.commissionPct ?? 40}%)
+                    </p>
+                    <p className="text-xl font-bold text-[#15803D] mt-1 tabular-nums">
+                      {formatRupiah(report.capsterDetail.commissionAmount ?? 0)}
+                    </p>
+                    <p className="text-[11px] text-[#64748B] mt-1">Bagi hasil layanan paket</p>
                   </div>
                   <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
                     <p className="text-[11px] text-[#64748B]">Layanan selesai</p>

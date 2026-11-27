@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Check,
   X,
+  Lock,
 } from "lucide-react";
 import { formatDateShort, formatRupiah, formatTimeHHMM } from "@/lib/format";
 import {
@@ -28,10 +29,13 @@ export interface RiwayatTransaction extends ReceiptTransaction {
 export function RiwayatClient({
   initialTransactions,
   storeInfo,
+  userRole = "Kasir",
 }: {
   initialTransactions: RiwayatTransaction[];
   storeInfo: ReceiptStoreInfo;
+  userRole?: string;
 }) {
+  const isManager = userRole === "Owner" || userRole === "Admin";
   const [transactions, setTransactions] = useState<RiwayatTransaction[]>(initialTransactions);
   const [filter, setFilter] = useState<"ALL" | "TUNAI" | "QRIS" | "DEBIT" | "MENUNGGU" | "REFUND">("ALL");
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all">("today");
@@ -40,6 +44,9 @@ export function RiwayatClient({
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [updatingRefund, setUpdatingRefund] = useState(false);
+  const [refundTargetTx, setRefundTargetTx] = useState<RiwayatTransaction | null>(null);
+  const [managerPasswordInput, setManagerPasswordInput] = useState("");
+  const [refundError, setRefundError] = useState<string | null>(null);
 
   const fetchTransactions = async (nextRange: "today" | "7d" | "30d" | "all") => {
     setRange(nextRange);
@@ -114,23 +121,39 @@ export function RiwayatClient({
     }
   };
 
-  const handleRefund = async (tx: RiwayatTransaction) => {
+  const executeRefund = async (tx: RiwayatTransaction, ownerPassword?: string) => {
     if (tx.status === "REFUND") return;
     setUpdatingRefund(true);
+    setRefundError(null);
     try {
       const res = await fetch(`/api/transactions/${tx.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "REFUND" }),
+        body: JSON.stringify({ status: "REFUND", ownerPassword }),
       });
-      if (res.ok) {
-        const json = await res.json();
-        setTransactions((prev) =>
-          prev.map((item) => (item.id === tx.id ? { ...item, ...json.data } : item))
-        );
+      const json = await res.json();
+      if (!res.ok) {
+        setRefundError(json.error ?? "Gagal melakukan refund");
+        return;
       }
+      setTransactions((prev) =>
+        prev.map((item) => (item.id === tx.id ? { ...item, ...json.data } : item))
+      );
+      setRefundTargetTx(null);
+      setManagerPasswordInput("");
     } finally {
       setUpdatingRefund(false);
+    }
+  };
+
+  const handleRefund = (tx: RiwayatTransaction) => {
+    if (tx.status === "REFUND") return;
+    if (isManager) {
+      executeRefund(tx);
+    } else {
+      setRefundError(null);
+      setManagerPasswordInput("");
+      setRefundTargetTx(tx);
     }
   };
 
@@ -440,7 +463,9 @@ export function RiwayatClient({
                 ) : (
                   <div className="flex justify-between pt-2">
                     <span className="text-[#64748B]">Metode pembayaran</span>
-                    <span className="font-medium text-[#0F172A]">QRIS</span>
+                    <span className="font-medium text-[#0F172A]">
+                      {selectedTx.paymentMethod === "DEBIT" ? "Debit / Kartu" : "QRIS"}
+                    </span>
                   </div>
                 )}
               </div>
@@ -488,8 +513,10 @@ export function RiwayatClient({
                 {selectedTx.status === "REFUND"
                   ? "Transaksi sudah di-refund"
                   : updatingRefund
-                  ? "Memproses refund..."
-                  : "Refund / void transaksi"}
+                    ? "Memproses refund..."
+                    : isManager
+                      ? "Refund / void transaksi"
+                      : "Refund transaksi (Perlu PIN/Password Owner)"}
               </button>
             </div>
           </>
@@ -499,6 +526,76 @@ export function RiwayatClient({
           </div>
         )}
       </aside>
+
+      {refundTargetTx && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeRefund(refundTargetTx, managerPasswordInput);
+            }}
+            className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-[#FEF2F2] text-[#DC2626] flex items-center justify-center">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#0F172A]">Otorisasi Owner / Admin</h3>
+                  <p className="text-[11px] text-[#64748B]">
+                    Refund {refundTargetTx.orderCode} ({formatRupiah(refundTargetTx.total)})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRefundTargetTx(null)}
+                className="w-7 h-7 rounded-full bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                Masukkan password akun Owner atau Admin
+              </label>
+              <input
+                required
+                type="password"
+                value={managerPasswordInput}
+                onChange={(e) => setManagerPasswordInput(e.target.value)}
+                placeholder="Password Owner/Admin"
+                className="w-full border border-[#0F172A] rounded-xl px-3.5 py-2 text-xs text-[#0F172A] focus:outline-none"
+              />
+            </div>
+
+            {refundError && (
+              <p className="text-xs text-[#DC2626] bg-[#FEF2F2] px-3 py-2 rounded-lg">
+                {refundError}
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRefundTargetTx(null)}
+                className="py-2 rounded-xl border border-[#E5E7EB] text-xs font-semibold text-[#0F172A] cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={updatingRefund}
+                className="py-2 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-semibold cursor-pointer"
+              >
+                {updatingRefund ? "Memverifikasi..." : "Konfirmasi Refund"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showReceiptModal && selectedTx && (
         <ReceiptModal

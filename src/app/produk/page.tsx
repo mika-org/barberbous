@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { ProdukClient } from "@/components/produk/ProdukClient";
 
 async function ProdukDataLoader() {
   await connection();
-  const [packages, drinks] = await Promise.all([
+  const [user, packages, drinks] = await Promise.all([
+    getCurrentUser(),
     prisma.package.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
@@ -15,7 +17,13 @@ async function ProdukDataLoader() {
     }),
   ]);
 
-  return <ProdukClient initialPackages={packages} initialDrinks={drinks} />;
+  return (
+    <ProdukClient
+      initialPackages={packages}
+      initialDrinks={drinks}
+      userRole={user?.role ?? "Kasir"}
+    />
+  );
 }
 
 export default function ProdukPage() {

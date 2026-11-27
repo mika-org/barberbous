@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { RiwayatClient } from "@/components/riwayat/RiwayatClient";
 
@@ -9,7 +10,8 @@ async function RiwayatDataLoader() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [transactions, setting] = await Promise.all([
+  const [user, transactions, setting] = await Promise.all([
+    getCurrentUser(),
     prisma.transaction.findMany({
       where: { createdAt: { gte: startOfDay } },
       include: { items: true },
@@ -32,6 +34,7 @@ async function RiwayatDataLoader() {
   return (
     <RiwayatClient
       initialTransactions={serialized}
+      userRole={user?.role ?? "Kasir"}
       storeInfo={{
         storeName: setting.storeName,
         address: setting.address,

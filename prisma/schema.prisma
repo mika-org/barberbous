@@ -62,6 +62,21 @@ enum ItemType {
   @@schema("barberbous")
 }
 
+enum ShiftStatus {
+  OPEN
+  CLOSED
+
+  @@schema("barberbous")
+}
+
+enum ActiveServiceStatus {
+  MELAYANI
+  SELESAI
+  BATAL
+
+  @@schema("barberbous")
+}
+
 model Package {
   id               String            @id @default(cuid())
   name             String            @unique
@@ -76,6 +91,7 @@ model Package {
   bookings         Booking[]
   transactions     Transaction[]
   transactionItems TransactionItem[]
+  activeServices   ActiveService[]
 
   @@schema("barberbous")
 }
@@ -94,47 +110,65 @@ model Drink {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   transactionItems TransactionItem[]
+  stockLogs        StockLog[]
+
+  @@schema("barberbous")
+}
+
+model StockLog {
+  id            String   @id @default(cuid())
+  drinkId       String
+  drink         Drink    @relation(fields: [drinkId], references: [id], onDelete: Cascade)
+  delta         Int
+  previousStock Int
+  newStock      Int
+  note          String   @default("Restock kulkas")
+  createdBy     String   @default("Kasir")
+  createdAt     DateTime @default(now())
 
   @@schema("barberbous")
 }
 
 model Capster {
-  id           String        @id @default(cuid())
-  code         String        @default("CPS-01")
-  name         String        @unique
-  phone        String        @default("0812-0000-0000")
-  photoUrl     String?
-  bgColor      String        @default("#C4B5E3")
-  status       CapsterStatus @default(TERSEDIA)
-  rating       Float         @default(4.9)
-  joinedLabel  String        @default("Jan 2026")
-  isActive     Boolean       @default(true)
-  sortOrder    Int           @default(0)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  bookings     Booking[]
-  transactions Transaction[]
+  id             String          @id @default(cuid())
+  code           String          @default("CPS-01")
+  name           String          @unique
+  phone          String          @default("0812-0000-0000")
+  photoUrl       String?
+  bgColor        String          @default("#C4B5E3")
+  status         CapsterStatus   @default(TERSEDIA)
+  rating         Float           @default(4.9)
+  commissionPct  Int             @default(40)
+  joinedLabel    String          @default("Jan 2026")
+  isActive       Boolean         @default(true)
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  bookings       Booking[]
+  transactions   Transaction[]
+  activeServices ActiveService[]
 
   @@schema("barberbous")
 }
 
 model Member {
-  id              String        @id @default(cuid())
-  memberCode      String        @unique
+  id              String          @id @default(cuid())
+  memberCode      String          @unique
   name            String
-  phone           String        @unique
+  phone           String          @unique
   birthDate       String?
   notes           String?
-  points          Int           @default(0)
-  visits          Int           @default(0)
+  points          Int             @default(0)
+  visits          Int             @default(0)
   lastVisitAt     DateTime?
   favoritePackage String?
   favoriteCapster String?
-  isActive        Boolean       @default(true)
-  joinedAt        DateTime      @default(now())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  isActive        Boolean         @default(true)
+  joinedAt        DateTime        @default(now())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   transactions    Transaction[]
+  activeServices  ActiveService[]
 
   @@schema("barberbous")
 }
@@ -145,6 +179,7 @@ model Voucher {
   label         String
   discountType  DiscountType
   discountValue Int
+  minSubtotal   Int          @default(0)
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -168,6 +203,54 @@ model Booking {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   transactions  Transaction[]
+
+  @@schema("barberbous")
+}
+
+model ActiveService {
+  id           String              @id @default(cuid())
+  customerName String              @default("Umum")
+  isMember     Boolean             @default(false)
+  memberId     String?
+  member       Member?             @relation(fields: [memberId], references: [id])
+  packageId    String
+  package      Package             @relation(fields: [packageId], references: [id])
+  capsterId    String
+  capster      Capster             @relation(fields: [capsterId], references: [id])
+  bookingId    String?
+  notes        String?
+  status       ActiveServiceStatus @default(MELAYANI)
+  startedAt    DateTime            @default(now())
+  completedAt  DateTime?
+
+  @@schema("barberbous")
+}
+
+model CashShift {
+  id                  String        @id @default(cuid())
+  status              ShiftStatus   @default(OPEN)
+  openingCash         Int           @default(0)
+  closingCashActual   Int?
+  closingCashExpected Int?
+  openedBy            String
+  closedBy            String?
+  notes               String?
+  openedAt            DateTime      @default(now())
+  closedAt            DateTime?
+  expenses            CashExpense[]
+
+  @@schema("barberbous")
+}
+
+model CashExpense {
+  id          String    @id @default(cuid())
+  shiftId     String
+  shift       CashShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  amount      Int
+  description String
+  category    String    @default("Operasional")
+  createdBy   String    @default("Kasir")
+  createdAt   DateTime  @default(now())
 
   @@schema("barberbous")
 }
@@ -196,6 +279,8 @@ model Transaction {
   discountAmount     Int               @default(0)
   discountLabel      String?
   voucherCode        String?
+  redeemedPoints     Int               @default(0)
+  pointsDiscount     Int               @default(0)
   taxAmount          Int               @default(0)
   serviceFeeAmount   Int               @default(0)
   total              Int

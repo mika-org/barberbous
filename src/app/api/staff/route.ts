@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { staffCreateSchema } from "@/lib/validators";
 import { hashPassword } from "@/lib/auth";
+import { requireManager } from "@/lib/rbac";
 
 const safeStaffSelect = {
   id: true,
@@ -29,6 +30,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await req.json();
     const parsed = staffCreateSchema.safeParse(body);

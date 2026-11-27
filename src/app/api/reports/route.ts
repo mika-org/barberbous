@@ -161,11 +161,17 @@ export async function GET(req: NextRequest) {
         0
       );
       const revenue = rows.reduce((s, t) => s + t.total, 0);
+      const pkgRevForCapster = packageLines
+        .filter((l) => l.capsterId === c.id)
+        .reduce((s, l) => s + l.revenueShare, 0);
+      const commissionAmount = Math.round((pkgRevForCapster * c.commissionPct) / 100);
       return {
         id: c.id,
         name: c.name,
         sold,
         revenue,
+        commissionPct: c.commissionPct,
+        commissionAmount,
         contributionPct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100) : 0,
       };
     });
@@ -272,10 +278,14 @@ export async function GET(req: NextRequest) {
           };
         });
         const topPackage = [...byPackage].sort((a, b) => b.sold - a.sold)[0] ?? null;
+        const pkgRevForCap = capLines.reduce((s, l) => s + l.revenueShare, 0);
+        const capCommission = Math.round((pkgRevForCap * selectedCap.commissionPct) / 100);
 
         capsterDetail = {
           capster: selectedCap,
           revenue: capRevenue,
+          commissionPct: selectedCap.commissionPct,
+          commissionAmount: capCommission,
           revenuePct: totalRevenue > 0 ? Math.round((capRevenue / totalRevenue) * 100) : 0,
           sold: capSold,
           totalSoldAll: packageSoldTotal,

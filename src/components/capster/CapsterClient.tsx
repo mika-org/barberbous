@@ -1,12 +1,23 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { Search, Plus, Calendar, Pencil, X, Check, Trash2 } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Calendar,
+  Pencil,
+  X,
+  Check,
+  Trash2,
+  MessageCircle,
+  AlertTriangle,
+} from "lucide-react";
 import { formatRupiah, getInitials } from "@/lib/format";
 
 export interface CapsterScheduleItem {
   id: string;
   customerName: string;
+  customerPhone?: string | null;
   scheduledTime: string;
   status: string;
   packageName: string;
@@ -21,9 +32,11 @@ export interface CapsterModel {
   bgColor: string;
   status: "TERSEDIA" | "MELAYANI" | "ISTIRAHAT";
   rating: number;
+  commissionPct: number;
   joinedLabel: string;
   isActive: boolean;
   todayRevenue: number;
+  todayCommission: number;
   todayServices: number;
   sharePct: number;
   topPackage: string;
@@ -32,7 +45,19 @@ export interface CapsterModel {
 
 type PanelMode = "detail" | "create" | "edit";
 
-export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterModel[] }) {
+export function CapsterClient({
+  initialCapsters,
+  packages = [],
+  storeName = "BARBERBOUS",
+  userRole = "Kasir",
+}: {
+  initialCapsters: CapsterModel[];
+  packages?: Array<{ id: string; name: string }>;
+  storeName?: string;
+  userRole?: string;
+}) {
+  const isManager = userRole === "Owner" || userRole === "Admin";
+
   const [capsters, setCapsters] = useState<CapsterModel[]>(initialCapsters);
   const [filter, setFilter] = useState<"ALL" | "TERSEDIA" | "MELAYANI" | "ISTIRAHAT">("ALL");
   const [search, setSearch] = useState("");
@@ -40,10 +65,20 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
   const [panelMode, setPanelMode] = useState<PanelMode>("detail");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
+  const [showAddScheduleForm, setShowAddScheduleForm] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newScheduleTime, setNewScheduleTime] = useState("13:00");
+  const [newPackageId, setNewPackageId] = useState<string>(packages[0]?.id ?? "");
+  const [addingSchedule, setAddingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [waToast, setWaToast] = useState<string | null>(null);
 
   // Form states
   const [nameInput, setNameInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
+  const [commissionInput, setCommissionInput] = useState("40");
   const [statusInput, setStatusInput] = useState<"TERSEDIA" | "MELAYANI" | "ISTIRAHAT">(
     "TERSEDIA"
   );
@@ -84,6 +119,7 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
     setMobileDrawerOpen(true);
     setNameInput("");
     setPhoneInput("0812-");
+    setCommissionInput("40");
     setStatusInput("TERSEDIA");
     setBgColorInput("#C4B5E3");
     setPhotoInput(null);
@@ -97,11 +133,44 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
     setMobileDrawerOpen(true);
     setNameInput(cap.name);
     setPhoneInput(cap.phone);
+    setCommissionInput(String(cap.commissionPct));
     setStatusInput(cap.status);
     setBgColorInput(cap.bgColor);
     setPhotoInput(cap.photoUrl);
     setActiveInput(cap.isActive);
     setFeedback(null);
+  };
+
+  const handleQuickStatusSwitch = async (
+    cap: CapsterModel,
+    nextStatus: "TERSEDIA" | "MELAYANI" | "ISTIRAHAT"
+  ) => {
+    if (cap.status === nextStatus) return;
+    const res = await fetch(`/api/capsters/${cap.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    });
+    if (res.ok) {
+      setCapsters((prev) =>
+        prev.map((c) => (c.id === cap.id ? { ...c, status: nextStatus } : c))
+      );
+    }
+  };
+
+  const handleSendScheduleWhatsApp = (capName: string, item: CapsterScheduleItem) => {
+    const msg = `Halo Kak ${item.customerName}, mengingatkan jadwal cukur di *${storeName}* hari ini pukul *${item.scheduledTime}* (Paket ${item.packageName} bersama Capster ${capName}). Sampai jumpa!`;
+    const digits = (item.customerPhone ?? "").replace(/\D/g, "");
+    const waPhone = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(msg).catch(() => {});
+    }
+    if (waPhone) {
+      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+    } else {
+      setWaToast("Pesan pengingat WA disalin ke clipboard (pelanggan belum isi no. HP)");
+      setTimeout(() => setWaToast(null), 2800);
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,6 +194,7 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
         body: JSON.stringify({
           name: nameInput,
           phone: phoneInput,
+          commissionPct: Number(commissionInput) || 40,
           status: statusInput,
           bgColor: bgColorInput,
           photoUrl: photoInput,
@@ -136,6 +206,7 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
       const newEntry: CapsterModel = {
         ...json.data,
         todayRevenue: 0,
+        todayCommission: 0,
         todayServices: 0,
         sharePct: 0,
         topPackage: "Basic",
@@ -163,6 +234,7 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
         body: JSON.stringify({
           name: nameInput,
           phone: phoneInput,
+          commissionPct: Number(commissionInput) || 40,
           status: statusInput,
           bgColor: bgColorInput,
           photoUrl: photoInput,
@@ -188,6 +260,10 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
     try {
       const res = await fetch(`/api/capsters/${selectedCapster.id}`, { method: "DELETE" });
       const json = await res.json();
+      if (!res.ok) {
+        setFeedback(json.error ?? "Gagal menghapus capster");
+        return;
+      }
       if (json.deactivated) {
         setCapsters((prev) =>
           prev.map((c) => (c.id === selectedCapster.id ? { ...c, isActive: false } : c))
@@ -239,14 +315,16 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={openCreate}
-              className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl px-4 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Tambah capster
-            </button>
+            {isManager && (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl px-4 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Tambah capster
+              </button>
+            )}
 
             <div className="relative flex-1 sm:flex-initial sm:w-52">
               <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -288,20 +366,21 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
 
         {/* Capster Table */}
         <div className="mt-4 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
-          <table className="w-full min-w-[540px] text-left border-collapse">
+          <table className="w-full min-w-[580px] text-left border-collapse">
             <thead>
               <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
                 <th className="py-3 px-4">Capster</th>
                 <th className="py-3 px-4">No. telepon</th>
                 <th className="py-3 px-4 text-right">Layanan</th>
                 <th className="py-3 px-4 text-right">Pendapatan</th>
+                <th className="py-3 px-4 text-right">Komisi</th>
                 <th className="py-3 px-4 text-right">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9] text-xs">
               {filteredCapsters.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-[#94A3B8]">
+                  <td colSpan={6} className="py-10 text-center text-[#94A3B8]">
                     Tidak ada capster dengan filter ini.
                   </td>
                 </tr>
@@ -338,7 +417,9 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
                           </div>
                           <div>
                             <p className="font-semibold text-[#0F172A]">{cap.name}</p>
-                            <p className="text-[11px] text-[#94A3B8]">{cap.code}</p>
+                            <p className="text-[11px] text-[#94A3B8]">
+                              {cap.code} · {cap.commissionPct}% bagi hasil
+                            </p>
                           </div>
                         </div>
                       </td>
@@ -348,6 +429,9 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
                         {formatRupiah(cap.todayRevenue)}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-semibold text-[#15803D] tabular-nums">
+                        {formatRupiah(cap.todayCommission)}
                       </td>
                       <td className="py-3.5 px-4 text-right">{renderStatusPill(cap.status)}</td>
                     </tr>
@@ -371,7 +455,7 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
           mobileDrawerOpen
             ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
             : "hidden"
-        } lg:static lg:flex lg:w-[330px] xl:w-[375px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
+        } lg:static lg:flex lg:w-[335px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
       >
         {(panelMode === "create" || panelMode === "edit") && (
           <form
@@ -434,16 +518,32 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
                 />
               </div>
 
-              <div>
-                <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                  No. telepon
-                </label>
-                <input
-                  required
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-                />
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                    No. telepon
+                  </label>
+                  <input
+                    required
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                    Bagi hasil / Komisi (%)
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={commissionInput}
+                    onChange={(e) => setCommissionInput(e.target.value)}
+                    className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  />
+                </div>
               </div>
 
               <div>
@@ -559,18 +659,41 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
                 )}
               </div>
 
+              {/* 1-Click Live Status Switcher for Kasir & Owner */}
+              <div className="bg-[#F4F4F5] p-1 rounded-xl grid grid-cols-3 gap-1">
+                {(["TERSEDIA", "MELAYANI", "ISTIRAHAT"] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => handleQuickStatusSwitch(selectedCapster, st)}
+                    className={`py-1.5 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                      selectedCapster.status === st
+                        ? "bg-white text-[#0F172A] shadow-xs"
+                        : "text-[#64748B] hover:text-[#0F172A]"
+                    }`}
+                  >
+                    {st === "TERSEDIA"
+                      ? "Tersedia"
+                      : st === "MELAYANI"
+                        ? "Melayani"
+                        : "Istirahat"}
+                  </button>
+                ))}
+              </div>
+
               <div className="bg-[#F4F4F5] rounded-2xl p-4 space-y-1">
                 <p className="text-[11px] text-[#64748B]">Pendapatan hari ini</p>
                 <p className="text-2xl font-bold text-[#0F172A] tabular-nums">
                   {formatRupiah(selectedCapster.todayRevenue)}{" "}
                   <span className="text-xs font-normal text-[#64748B]">hari ini</span>
                 </p>
-                <p className="text-[11px] text-[#64748B]">
-                  {selectedCapster.todayServices} layanan · {selectedCapster.sharePct}% dari total
+                <p className="text-[11px] text-[#15803D] font-semibold">
+                  Estimasi komisi ({selectedCapster.commissionPct}%):{" "}
+                  {formatRupiah(selectedCapster.todayCommission)}
                 </p>
               </div>
 
-              <div className="space-y-3 text-xs pt-1">
+              <div className="space-y-2.5 text-xs pt-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[#64748B]">No. telepon</span>
                   <span className="font-semibold text-[#0F172A]">{selectedCapster.phone}</span>
@@ -578,7 +701,7 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
                 <div className="flex items-center justify-between">
                   <span className="text-[#64748B]">Layanan selesai</span>
                   <span className="font-semibold text-[#0F172A]">
-                    {selectedCapster.todayServices}
+                    {selectedCapster.todayServices} layanan ({selectedCapster.sharePct}%)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -599,20 +722,26 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
             <div className="space-y-2 pt-5">
               <button
                 type="button"
-                onClick={() => setShowScheduleModal(true)}
+                onClick={() => {
+                  setShowAddScheduleForm(false);
+                  setScheduleError(null);
+                  setShowScheduleModal(true);
+                }}
                 className="w-full py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Calendar className="w-3.5 h-3.5" />
-                Lihat jadwal
+                Lihat jadwal ({selectedCapster.schedule.length})
               </button>
-              <button
-                type="button"
-                onClick={() => openEdit(selectedCapster)}
-                className="w-full py-2.5 rounded-xl border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                Edit capster
-              </button>
+              {isManager && (
+                <button
+                  type="button"
+                  onClick={() => openEdit(selectedCapster)}
+                  className="w-full py-2.5 rounded-xl border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Edit capster &amp; komisi
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -621,22 +750,158 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
       {/* Schedule Modal */}
       {showScheduleModal && selectedCapster && (
         <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <div className="flex items-start justify-between">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-[#0F172A]">
                   Jadwal {selectedCapster.name}
                 </h3>
-                <p className="text-xs text-[#64748B]">Antrian booking hari ini</p>
+                <p className="text-xs text-[#64748B]">
+                  {selectedCapster.schedule.length} antrian booking hari ini
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowScheduleModal(false)}
-                className="w-8 h-8 rounded-full bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {packages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleError(null);
+                      setShowAddScheduleForm((p) => !p);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-xl border border-[#E5E7EB] hover:border-[#0F172A] px-2.5 py-1.5 text-[11px] font-semibold text-[#0F172A] cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Tambah jadwal
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="w-8 h-8 rounded-full bg-[#F1F5F9] flex items-center justify-center text-[#64748B] cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
+
+            {scheduleError && (
+              <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-xl p-3 flex items-start gap-2 text-xs text-[#DC2626]">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{scheduleError}</span>
+              </div>
+            )}
+
+            {waToast && (
+              <p className="bg-[#F0FDF4] border border-[#BBF7D0] text-[#15803D] rounded-xl px-3 py-2 text-xs font-medium">
+                {waToast}
+              </p>
+            )}
+
+            {showAddScheduleForm && packages.length > 0 && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!newCustomerName.trim()) return;
+                  setAddingSchedule(true);
+                  setScheduleError(null);
+                  try {
+                    const res = await fetch("/api/bookings", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        customerName: newCustomerName.trim(),
+                        customerPhone: newCustomerPhone.trim() || null,
+                        scheduledTime: newScheduleTime,
+                        packageId: newPackageId || packages[0].id,
+                        capsterId: selectedCapster.id,
+                      }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok) {
+                      setScheduleError(json.error ?? "Gagal menambah jadwal");
+                      return;
+                    }
+                    if (json.data) {
+                      const createdItem: CapsterScheduleItem = {
+                        id: json.data.id,
+                        customerName: json.data.customerName,
+                        customerPhone: json.data.customerPhone,
+                        scheduledTime: json.data.scheduledTime,
+                        status: json.data.status,
+                        packageName:
+                          json.data.package?.name ??
+                          packages.find((p) => p.id === newPackageId)?.name ??
+                          "Basic",
+                      };
+                      setCapsters((prev) =>
+                        prev.map((c) =>
+                          c.id === selectedCapster.id
+                            ? {
+                                ...c,
+                                schedule: [...c.schedule, createdItem].sort((a, b) =>
+                                  a.scheduledTime.localeCompare(b.scheduledTime)
+                                ),
+                              }
+                            : c
+                        )
+                      );
+                      setNewCustomerName("");
+                      setNewCustomerPhone("");
+                      setShowAddScheduleForm(false);
+                    }
+                  } finally {
+                    setAddingSchedule(false);
+                  }
+                }}
+                className="bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl p-3.5 space-y-2.5 text-xs"
+              >
+                <p className="font-semibold text-[#0F172A]">
+                  Jadwal baru untuk {selectedCapster.name}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    required
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    placeholder="Nama pelanggan"
+                    className="bg-white border border-[#E5E7EB] rounded-lg px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  />
+                  <input
+                    value={newCustomerPhone}
+                    onChange={(e) => setNewCustomerPhone(e.target.value)}
+                    placeholder="No. WA (opsional)"
+                    className="bg-white border border-[#E5E7EB] rounded-lg px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    required
+                    type="time"
+                    value={newScheduleTime}
+                    onChange={(e) => setNewScheduleTime(e.target.value)}
+                    className="bg-white border border-[#E5E7EB] rounded-lg px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  />
+                  <select
+                    value={newPackageId}
+                    onChange={(e) => setNewPackageId(e.target.value)}
+                    className="flex-1 bg-white border border-[#E5E7EB] rounded-lg px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                  >
+                    {packages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        Paket {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={addingSchedule}
+                    className="bg-[#0F172A] text-white rounded-lg px-3.5 py-2 text-xs font-semibold cursor-pointer"
+                  >
+                    {addingSchedule ? "..." : "Simpan"}
+                  </button>
+                </div>
+              </form>
+            )}
 
             {selectedCapster.schedule.length === 0 ? (
               <p className="text-xs text-[#94A3B8] py-8 text-center">
@@ -644,28 +909,101 @@ export function CapsterClient({ initialCapsters }: { initialCapsters: CapsterMod
               </p>
             ) : (
               <div className="space-y-2.5">
-                {selectedCapster.schedule.map((item) => (
-                  <div
-                    key={item.id}
-                    className="border border-[#E5E7EB] rounded-xl px-4 py-3 flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <p className="font-semibold text-[#0F172A]">{item.customerName}</p>
-                      <p className="text-[11px] text-[#64748B]">
-                        {item.scheduledTime} · Paket {item.packageName}
-                      </p>
-                    </div>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
-                        item.status === "HADIR"
-                          ? "bg-[#DCFCE7] text-[#15803D]"
-                          : "bg-[#FEF3C7] text-[#B45309]"
-                      }`}
+                {selectedCapster.schedule.map((item) => {
+                  const isDeleting = deletingScheduleId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      className="border border-[#E5E7EB] rounded-xl px-3.5 py-3 flex items-center justify-between gap-2 text-xs"
                     >
-                      {item.status === "HADIR" ? "Hadir" : "Menunggu"}
-                    </span>
-                  </div>
-                ))}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#0F172A] truncate">
+                          {item.customerName}
+                        </p>
+                        <p className="text-[11px] text-[#64748B]">
+                          {item.scheduledTime} · Paket {item.packageName}
+                          {item.customerPhone ? ` · ${item.customerPhone}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          title="Ubah status kehadiran"
+                          onClick={async () => {
+                            const nextStatus = item.status === "HADIR" ? "MENUNGGU" : "HADIR";
+                            const res = await fetch(`/api/bookings/${item.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ status: nextStatus }),
+                            });
+                            if (res.ok) {
+                              setCapsters((prev) =>
+                                prev.map((c) =>
+                                  c.id === selectedCapster.id
+                                    ? {
+                                        ...c,
+                                        schedule: c.schedule.map((s) =>
+                                          s.id === item.id ? { ...s, status: nextStatus } : s
+                                        ),
+                                      }
+                                    : c
+                                )
+                              );
+                            }
+                          }}
+                          className={`px-2 py-1 rounded-full text-[10px] font-semibold cursor-pointer transition ${
+                            item.status === "HADIR"
+                              ? "bg-[#DCFCE7] text-[#15803D]"
+                              : "bg-[#FEF3C7] text-[#B45309]"
+                          }`}
+                        >
+                          {item.status === "HADIR" ? "Hadir" : "Menunggu"}
+                        </button>
+                        <button
+                          type="button"
+                          title="Kirim pengingat WhatsApp"
+                          onClick={() => handleSendScheduleWhatsApp(selectedCapster.name, item)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] text-[10px] font-semibold transition cursor-pointer"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          WA
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          title={`Hapus jadwal ${item.customerName}`}
+                          aria-label={`Hapus jadwal ${item.customerName}`}
+                          onClick={async () => {
+                            setDeletingScheduleId(item.id);
+                            try {
+                              const res = await fetch(`/api/bookings/${item.id}`, {
+                                method: "DELETE",
+                              });
+                              if (res.ok) {
+                                setCapsters((prev) =>
+                                  prev.map((c) =>
+                                    c.id === selectedCapster.id
+                                      ? {
+                                          ...c,
+                                          schedule: c.schedule.filter((s) => s.id !== item.id),
+                                        }
+                                      : c
+                                  )
+                                );
+                              }
+                            } finally {
+                              setDeletingScheduleId(null);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[#FEE2E2] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-semibold disabled:opacity-50 transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          {isDeleting ? "..." : "Hapus"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 

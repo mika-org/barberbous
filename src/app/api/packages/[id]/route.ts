@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { packageUpdateSchema } from "@/lib/validators";
+import { requireManager } from "@/lib/rbac";
 
 export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/packages/[id]">) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const { id } = await ctx.params;
     const body = await req.json();
@@ -26,6 +30,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/packages/[
 }
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/packages/[id]">) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const { id } = await ctx.params;
     const txCount = await prisma.transaction.count({ where: { packageId: id } });

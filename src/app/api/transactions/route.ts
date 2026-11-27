@@ -7,9 +7,9 @@ import { ItemType } from "@prisma/client";
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const filter = req.nextUrl.searchParams.get("filter") ?? "ALL"; // ALL | TUNAI | QRIS | DEBIT | MENUNGGU | REFUND
+    const filter = req.nextUrl.searchParams.get("filter") ?? "ALL";
     const search = req.nextUrl.searchParams.get("search")?.trim() ?? "";
-    const range = req.nextUrl.searchParams.get("range") ?? "today"; // today | 7d | 30d | all
+    const range = req.nextUrl.searchParams.get("range") ?? "today";
 
     const now = new Date();
     let dateFilter: { gte?: Date } | undefined;
@@ -204,13 +204,30 @@ export async function POST(req: NextRequest) {
       discountAmount = Math.min(subtotal, parsed.data.discountValue);
     }
 
-    const afterDiscount = Math.max(0, subtotal - discountAmount);
+    const afterPromoDiscount = Math.max(0, subtotal - discountAmount);
+
+    // Redeem member loyalty points (1 poin = Rp10)
+    let redeemedPoints = 0;
+    let pointsDiscount = 0;
+    if (parsed.data.redeemedPoints > 0 && member && member.isActive) {
+      if (parsed.data.redeemedPoints > member.points) {
+        return NextResponse.json(
+          { error: `Poin member tidak mencukupi (tersedia ${member.points} poin)` },
+          { status: 400 }
+        );
+      }
+      const maxUsablePoints = Math.floor(afterPromoDiscount / 10);
+      redeemedPoints = Math.min(parsed.data.redeemedPoints, maxUsablePoints);
+      pointsDiscount = redeemedPoints * 10;
+    }
+
+    const afterAllDiscounts = Math.max(0, afterPromoDiscount - pointsDiscount);
     const taxAmount =
       setting?.taxEnabled && !setting.priceIncludesTax
-        ? Math.round((afterDiscount * setting.taxRate) / 100)
+        ? Math.round((afterAllDiscounts * setting.taxRate) / 100)
         : 0;
     const serviceFeeAmount = setting?.serviceFeeEnabled ? setting.serviceFeeAmount : 0;
-    const total = afterDiscount + taxAmount + serviceFeeAmount;
+    const total = afterAllDiscounts + taxAmount + serviceFeeAmount;
 
     let cashReceived: number | null = null;
     let changeAmount: number | null = null;
@@ -232,6 +249,14 @@ export async function POST(req: NextRequest) {
     const resolvedCustomerName = member ? member.name : parsed.data.customerName;
     const resolvedIsMember = member ? true : parsed.data.isMember;
 
+    const totalDiscountAmount = discountAmount + pointsDiscount;
+    const combinedDiscountLabel =
+      discountAmount > 0 && pointsDiscount > 0
+        ? `${parsed.data.discountLabel ?? "Diskon"} + Tukar ${redeemedPoints} poin`
+        : pointsDiscount > 0
+          ? `Tukar ${redeemedPoints} poin`
+          : parsed.data.discountLabel ?? null;
+
     const created = await prisma.$transaction(async (tx) => {
       const createdTx = await tx.transaction.create({
         data: {
@@ -250,9 +275,11 @@ export async function POST(req: NextRequest) {
           subtotal,
           discountType: parsed.data.discountType ?? null,
           discountValue: parsed.data.discountValue,
-          discountAmount,
-          discountLabel: parsed.data.discountLabel ?? null,
+          discountAmount: totalDiscountAmount,
+          discountLabel: combinedDiscountLabel,
           voucherCode: parsed.data.voucherCode ?? null,
+          redeemedPoints,
+          pointsDiscount,
           taxAmount,
           serviceFeeAmount,
           total,
@@ -269,7 +296,6 @@ export async function POST(req: NextRequest) {
         include: { items: true, member: true },
       });
 
-      // Decrement drink stocks
       const drinkDecrements = new Map<string, number>();
       for (const item of resolvedItems) {
         if (item.itemType === ItemType.DRINK && item.drinkId) {
@@ -283,13 +309,13 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Award loyalty points & increment visit if member linked & completed
-      if (member && parsed.data.status === "SELESAI") {
-        const earnedPoints = Math.max(10, Math.floor(total / 1000) * 10);
+      if (member && member.isActive && parsed.data.status === "SELESAI") {
+        const earnedPoints = total > 0 ? Math.max(10, Math.floor(total / 1000) * 10) : 0;
+        const netPointsDelta = earnedPoints - redeemedPoints;
         await tx.member.update({
           where: { id: member.id },
           data: {
-            points: { increment: earnedPoints },
+            points: { increment: netPointsDelta },
             visits: { increment: 1 },
             lastVisitAt: new Date(),
             ...(firstPackageItem ? { favoritePackage: firstPackageItem.packageName } : {}),
@@ -303,6 +329,32 @@ export async function POST(req: NextRequest) {
           where: { id: parsed.data.bookingId },
           data: { status: "SELESAI" },
         });
+      }
+
+      if (parsed.data.activeServiceId) {
+        const activeSvc = await tx.activeService.update({
+          where: { id: parsed.data.activeServiceId },
+          data: { status: "SELESAI", completedAt: new Date() },
+        });
+        const remainingForCapster = await tx.activeService.count({
+          where: { capsterId: activeSvc.capsterId, status: "MELAYANI" },
+        });
+        if (remainingForCapster === 0) {
+          await tx.capster.update({
+            where: { id: activeSvc.capsterId },
+            data: { status: "TERSEDIA" },
+          });
+        }
+      } else if (capster && parsed.data.status === "SELESAI") {
+        const remainingForCapster = await tx.activeService.count({
+          where: { capsterId: capster.id, status: "MELAYANI" },
+        });
+        if (remainingForCapster === 0 && capster.status === "MELAYANI") {
+          await tx.capster.update({
+            where: { id: capster.id },
+            data: { status: "TERSEDIA" },
+          });
+        }
       }
 
       return createdTx;

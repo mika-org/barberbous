@@ -15,12 +15,17 @@ import {
   ShoppingBag,
   ChevronDown,
   X,
+  Wallet,
+  Sparkles,
+  Play,
+  MessageCircle,
 } from "lucide-react";
-import { formatDateHeader, formatRupiah, getInitials } from "@/lib/format";
+import { formatDateHeader, formatRupiah, formatTimeHHMM, getInitials } from "@/lib/format";
 import { DiskonModal, type DiscountState } from "./DiskonModal";
 import { PembayaranModal } from "./PembayaranModal";
 import { PelangganModal, type PosMember } from "./PelangganModal";
 import { BookingAddModal } from "./BookingAddModal";
+import { ShiftModal } from "./ShiftModal";
 import { type ReceiptStoreInfo, type ReceiptTransaction } from "../ReceiptModal";
 
 export interface PosPackage {
@@ -54,6 +59,7 @@ export interface PosCapster {
 export interface PosBooking {
   id: string;
   customerName: string;
+  customerPhone?: string | null;
   isMember: boolean;
   scheduledTime: string;
   status: "HADIR" | "MENUNGGU" | "SELESAI" | "BATAL";
@@ -61,6 +67,21 @@ export interface PosBooking {
   capsterId: string;
   package: PosPackage;
   capster: PosCapster;
+}
+
+export interface PosActiveQueueItem {
+  id: string;
+  customerName: string;
+  isMember: boolean;
+  memberId: string | null;
+  packageId: string;
+  capsterId: string;
+  bookingId: string | null;
+  notes: string | null;
+  startedAt: string;
+  package: PosPackage;
+  capster: PosCapster;
+  member: PosMember | null;
 }
 
 export interface PosStoreSetting extends ReceiptStoreInfo {
@@ -91,6 +112,8 @@ interface KasirClientProps {
   initialCapsters: PosCapster[];
   initialMembers: PosMember[];
   initialBookings: PosBooking[];
+  initialActiveQueue?: PosActiveQueueItem[];
+  initialHasOpenShift?: boolean;
   initialNextOrderCode: string;
   initialSetting: PosStoreSetting;
   cashierName?: string;
@@ -102,31 +125,37 @@ export function KasirClient({
   initialCapsters,
   initialMembers,
   initialBookings,
+  initialActiveQueue = [],
+  initialHasOpenShift = false,
   initialNextOrderCode,
   initialSetting,
   cashierName = "Rehan",
 }: KasirClientProps) {
   const [packages] = useState<PosPackage[]>(initialPackages);
   const [drinks, setDrinks] = useState<PosDrink[]>(initialDrinks);
-  const [capsters] = useState<PosCapster[]>(initialCapsters);
-  const [members] = useState<PosMember[]>(initialMembers);
+  const [capsters, setCapsters] = useState<PosCapster[]>(initialCapsters);
+  const [members, setMembers] = useState<PosMember[]>(initialMembers);
   const [bookings, setBookings] = useState<PosBooking[]>(initialBookings);
+  const [activeQueue, setActiveQueue] = useState<PosActiveQueueItem[]>(initialActiveQueue);
+  const [hasOpenShift, setHasOpenShift] = useState<boolean>(initialHasOpenShift);
   const [orderCode, setOrderCode] = useState<string>(initialNextOrderCode);
   const [setting] = useState<PosStoreSetting>(initialSetting);
 
   // Clean new-transaction cart state
   const [search, setSearch] = useState("");
-  const [orderTab, setOrderTab] = useState<"WALK_IN" | "BOOKING">("WALK_IN");
+  const [orderTab, setOrderTab] = useState<"WALK_IN" | "ACTIVE" | "BOOKING">("WALK_IN");
   const [packageCart, setPackageCart] = useState<PackageCartEntry[]>([]);
   const [drinkCart, setDrinkCart] = useState<DrinkCartEntry[]>([]);
-  const [selectedCapsterId, setSelectedCapsterId] = useState<string>(""); // "" = Pilih Capster / AUTO = Siapa saja
+  const [selectedCapsterId, setSelectedCapsterId] = useState<string>("");
   const [capsterAuto, setCapsterAuto] = useState<boolean>(false);
   const [showCapsterDropdown, setShowCapsterDropdown] = useState(false);
 
   const [selectedMember, setSelectedMember] = useState<PosMember | null>(null);
+  const [useMemberPoints, setUseMemberPoints] = useState<boolean>(false);
   const [isMember, setIsMember] = useState<boolean>(false);
   const [customerName, setCustomerName] = useState<string>("");
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [activeServiceId, setActiveServiceId] = useState<string | null>(null);
 
   const [discount, setDiscount] = useState<DiscountState>({
     type: null,
@@ -138,6 +167,7 @@ export function KasirClient({
   const [notes, setNotes] = useState<string>("");
 
   // Modals & mobile panel
+  const [showShiftModal, setShowShiftModal] = useState(false);
   const [showPelangganModal, setShowPelangganModal] = useState(false);
   const [showDiskonModal, setShowDiskonModal] = useState(false);
   const [showCatatanModal, setShowCatatanModal] = useState(false);
@@ -145,11 +175,13 @@ export function KasirClient({
   const [showPembayaranModal, setShowPembayaranModal] = useState(false);
   const [showBookingAddModal, setShowBookingAddModal] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [startingQueue, setStartingQueue] = useState(false);
+  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2600);
+    setTimeout(() => setToast(null), 2800);
   };
 
   const filteredPackages = useMemo(() => {
@@ -218,6 +250,7 @@ export function KasirClient({
 
   const handleSelectBooking = (booking: PosBooking) => {
     setSelectedBookingId(booking.id);
+    setActiveServiceId(null);
     setPackageCart([{ pkg: booking.package, quantity: 1 }]);
     setSelectedCapsterId(booking.capsterId);
     setCapsterAuto(false);
@@ -227,7 +260,117 @@ export function KasirClient({
       ? members.find((m) => m.name.toLowerCase() === booking.customerName.toLowerCase()) ?? null
       : null;
     setSelectedMember(matchingMember);
-    setOrderTab("BOOKING");
+    setUseMemberPoints(false);
+    setOrderTab("WALK_IN");
+  };
+
+  const handleCheckoutActiveChair = (chair: PosActiveQueueItem) => {
+    setActiveServiceId(chair.id);
+    setSelectedBookingId(chair.bookingId);
+    setPackageCart([{ pkg: chair.package, quantity: 1 }]);
+    setSelectedCapsterId(chair.capsterId);
+    setCapsterAuto(false);
+    setCustomerName(chair.customerName);
+    setIsMember(chair.isMember);
+    setSelectedMember(chair.member);
+    setUseMemberPoints(false);
+    setNotes(chair.notes ?? "");
+    setOrderTab("WALK_IN");
+    showToast(`Tagihan ${chair.customerName} dimuat — silakan tambah minuman atau klik Lanjut Transaksi`);
+  };
+
+  const handleStartHaircutQueue = async () => {
+    if (packageCart.length === 0) return;
+    const chosenCapster =
+      selectedCapster ??
+      capsters.find((c) => c.status === "TERSEDIA") ??
+      capsters[0] ??
+      null;
+    if (!chosenCapster) {
+      showToast("Pilih capster terlebih dahulu");
+      return;
+    }
+    setStartingQueue(true);
+    try {
+      const res = await fetch("/api/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName:
+            selectedMember?.name || customerName.trim() || (isMember ? "Member" : "Pelanggan Walk-in"),
+          isMember: Boolean(selectedMember) || isMember,
+          memberId: selectedMember?.id ?? null,
+          packageId: packageCart[0].pkg.id,
+          capsterId: chosenCapster.id,
+          bookingId: selectedBookingId,
+          notes: notes.trim() || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+
+      setActiveQueue((prev) => [...prev, json.data]);
+      setCapsters((prev) =>
+        prev.map((c) => (c.id === chosenCapster.id ? { ...c, status: "MELAYANI" } : c))
+      );
+      showToast(`${chosenCapster.name} mulai melayani (${packageCart[0].pkg.name})`);
+      resetCart();
+      setOrderTab("ACTIVE");
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Gagal memulai antrian cukur");
+    } finally {
+      setStartingQueue(false);
+    }
+  };
+
+  const handleSendBookingWhatsApp = (bk: PosBooking) => {
+    const msg = `Halo Kak ${bk.customerName}, mengingatkan jadwal cukur di *${setting.storeName}* hari ini pukul *${bk.scheduledTime}* (Paket ${bk.package.name} bersama Capster ${bk.capster.name}). Sampai jumpa!`;
+    const digits = (bk.customerPhone ?? "").replace(/\D/g, "");
+    const waPhone = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(msg).catch(() => {});
+    }
+    if (waPhone) {
+      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+    } else {
+      showToast("Pesan pengingat WA disalin ke clipboard");
+    }
+  };
+
+  const handleToggleBookingStatus = async (bk: PosBooking) => {
+    const nextStatus = bk.status === "HADIR" ? "MENUNGGU" : "HADIR";
+    const res = await fetch(`/api/bookings/${bk.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    });
+    if (res.ok) {
+      setBookings((prev) =>
+        prev.map((item) => (item.id === bk.id ? { ...item, status: nextStatus } : item))
+      );
+    }
+  };
+
+  const handleDeleteBooking = async (bk: PosBooking) => {
+    setDeletingBookingId(bk.id);
+    try {
+      const res = await fetch(`/api/bookings/${bk.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        showToast(json.error ?? "Gagal menghapus booking");
+        return;
+      }
+      setBookings((prev) => prev.filter((item) => item.id !== bk.id));
+      if (selectedBookingId === bk.id) {
+        resetCart();
+        setOrderTab("BOOKING");
+      }
+      showToast(`Booking ${bk.customerName} (${bk.scheduledTime}) berhasil dihapus`);
+    } finally {
+      setDeletingBookingId(null);
+    }
   };
 
   const resetCart = () => {
@@ -237,7 +380,9 @@ export function KasirClient({
     setCapsterAuto(false);
     setShowCapsterDropdown(false);
     setSelectedMember(null);
+    setUseMemberPoints(false);
     setSelectedBookingId(null);
+    setActiveServiceId(null);
     setCustomerName("");
     setIsMember(false);
     setNotes("");
@@ -259,7 +404,7 @@ export function KasirClient({
     [packageCart, drinkCart]
   );
 
-  const discountAmount = useMemo(() => {
+  const promoDiscountAmount = useMemo(() => {
     if (!discount.type || discount.value <= 0) return 0;
     if (discount.type === "PERCENT") {
       return Math.round((subtotal * Math.min(100, discount.value)) / 100);
@@ -267,14 +412,25 @@ export function KasirClient({
     return Math.min(subtotal, discount.value);
   }, [discount, subtotal]);
 
-  const afterDiscount = Math.max(0, subtotal - discountAmount);
+  const afterPromo = Math.max(0, subtotal - promoDiscountAmount);
+
+  // Max usable member points (1 poin = Rp10)
+  const maxUsablePoints = useMemo(() => {
+    if (!selectedMember || !selectedMember.isActive || selectedMember.points <= 0) return 0;
+    return Math.min(selectedMember.points, Math.floor(afterPromo / 10));
+  }, [selectedMember, afterPromo]);
+
+  const redeemedPoints = useMemberPoints ? maxUsablePoints : 0;
+  const pointsDiscountAmount = redeemedPoints * 10;
+
+  const afterAllDiscounts = Math.max(0, afterPromo - pointsDiscountAmount);
   const taxAmount =
     setting.taxEnabled && !setting.priceIncludesTax
-      ? Math.round((afterDiscount * setting.taxRate) / 100)
+      ? Math.round((afterAllDiscounts * setting.taxRate) / 100)
       : 0;
   const serviceFeeAmount =
     setting.serviceFeeEnabled && totalQty > 0 ? setting.serviceFeeAmount : 0;
-  const total = afterDiscount + taxAmount + serviceFeeAmount;
+  const total = afterAllDiscounts + taxAmount + serviceFeeAmount;
 
   const needsCapsterWarning = packageCart.length > 0 && !selectedCapsterId && !capsterAuto;
 
@@ -293,7 +449,10 @@ export function KasirClient({
   }): Promise<ReceiptTransaction> => {
     const autoCapsterId =
       packageCart.length > 0
-        ? selectedCapsterId || (capsterAuto ? capsters[0]?.id ?? null : null)
+        ? selectedCapsterId ||
+          (capsterAuto
+            ? (capsters.find((c) => c.status === "TERSEDIA") ?? capsters[0])?.id ?? null
+            : null)
         : null;
 
     const apiItems = [
@@ -313,7 +472,7 @@ export function KasirClient({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        orderType: orderTab,
+        orderType: selectedBookingId ? "BOOKING" : "WALK_IN",
         customerName:
           selectedMember?.name || customerName.trim() || (isMember ? "Member" : "Umum"),
         isMember: Boolean(selectedMember) || isMember,
@@ -321,10 +480,12 @@ export function KasirClient({
         items: apiItems,
         capsterId: autoCapsterId,
         bookingId: selectedBookingId,
+        activeServiceId,
         discountType: discount.type,
         discountValue: discount.value,
         discountLabel: discount.label,
         voucherCode: discount.voucherCode,
+        redeemedPoints,
         paymentMethod: payload.paymentMethod,
         cashReceived: payload.cashReceived,
         notes: notes.trim() || null,
@@ -336,7 +497,6 @@ export function KasirClient({
       throw new Error(json.error ?? "Gagal menyimpan transaksi");
     }
 
-    // Decrement drink stocks in UI immediately
     if (drinkCart.length > 0) {
       setDrinks((prev) =>
         prev.map((d) => {
@@ -344,6 +504,16 @@ export function KasirClient({
           return ordered ? { ...d, stock: Math.max(0, d.stock - ordered.quantity) } : d;
         })
       );
+    }
+
+    if (selectedMember && json.data?.member) {
+      setMembers((prev) =>
+        prev.map((m) => (m.id === json.data.member.id ? json.data.member : m))
+      );
+    }
+
+    if (activeServiceId) {
+      setActiveQueue((prev) => prev.filter((q) => q.id !== activeServiceId));
     }
 
     return json.data as ReceiptTransaction;
@@ -354,7 +524,12 @@ export function KasirClient({
     setMobileCartOpen(false);
     resetCart();
 
-    const [txRes, bkRes] = await Promise.all([fetch("/api/transactions"), fetch("/api/bookings")]);
+    const [txRes, bkRes, qRes, capRes] = await Promise.all([
+      fetch("/api/transactions"),
+      fetch("/api/bookings"),
+      fetch("/api/queue"),
+      fetch("/api/capsters?activeOnly=true"),
+    ]);
     if (txRes.ok) {
       const txJson = await txRes.json();
       if (txJson.meta?.nextOrderCode) setOrderCode(txJson.meta.nextOrderCode);
@@ -362,6 +537,14 @@ export function KasirClient({
     if (bkRes.ok) {
       const bkJson = await bkRes.json();
       setBookings(bkJson.data ?? []);
+    }
+    if (qRes.ok) {
+      const qJson = await qRes.json();
+      setActiveQueue(qJson.data ?? []);
+    }
+    if (capRes.ok) {
+      const capJson = await capRes.json();
+      setCapsters(capJson.data ?? []);
     }
   };
 
@@ -402,15 +585,31 @@ export function KasirClient({
             </p>
           </div>
 
-          <div className="relative w-full sm:w-64 md:w-72">
-            <Search className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari paket atau minuman"
-              className="w-full bg-white border border-[#E5E7EB] rounded-xl pl-9 pr-4 py-2 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A]"
-            />
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {/* Shift / Cash Drawer Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowShiftModal(true)}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold shrink-0 transition cursor-pointer ${
+                hasOpenShift
+                  ? "bg-[#F0FDF4] border-[#BBF7D0] text-[#15803D]"
+                  : "bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]"
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>{hasOpenShift ? "Laci Aktif" : "Buka Shift"}</span>
+            </button>
+
+            <div className="relative flex-1 sm:w-60 md:w-68">
+              <Search className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari paket atau minuman"
+                className="w-full bg-white border border-[#E5E7EB] rounded-xl pl-9 pr-4 py-2 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A]"
+              />
+            </div>
           </div>
         </div>
 
@@ -603,7 +802,9 @@ export function KasirClient({
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-[#64748B] truncate">
               {totalQty === 0
-                ? "Keranjang kosong"
+                ? activeQueue.length > 0
+                  ? `${activeQueue.length} kursi aktif`
+                  : "Keranjang kosong"
                 : `${totalQty} item${selectedCapster ? ` · ${selectedCapster.name}` : ""}`}
             </p>
             <p className="text-sm font-bold text-[#0F172A] tabular-nums">
@@ -645,16 +846,20 @@ export function KasirClient({
           mobileCartOpen
             ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
             : "hidden"
-        } lg:static lg:flex lg:w-[330px] xl:w-[375px] shrink-0 bg-white border-l border-[#E5E7EB] flex-col h-full`}
+        } lg:static lg:flex lg:w-[335px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] flex-col h-full`}
       >
-        {/* Top Header + Walk-in / Booking Tabs */}
+        {/* Top Header + Walk-in / Kursi Aktif / Booking Tabs */}
         <div className="px-5 pt-5 pb-3 border-b border-[#F1F5F9]">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="text-base font-bold text-[#0F172A]">Detail Transaksi</h2>
               <p className="text-[11px] text-[#64748B] mt-0.5">
                 Pesanan {orderCode}
-                {selectedBookingId ? " · Dari Booking" : ""}
+                {activeServiceId
+                  ? " · Penyelesaian Kursi"
+                  : selectedBookingId
+                    ? " · Dari Booking"
+                    : ""}
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -676,11 +881,11 @@ export function KasirClient({
             </div>
           </div>
 
-          <div className="mt-3.5 bg-[#F4F4F5] p-1 rounded-xl grid grid-cols-2 gap-1">
+          <div className="mt-3.5 bg-[#F4F4F5] p-1 rounded-xl grid grid-cols-3 gap-1">
             <button
               type="button"
               onClick={() => setOrderTab("WALK_IN")}
-              className={`py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`py-1.5 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
                 orderTab === "WALK_IN"
                   ? "bg-white text-[#0F172A] shadow-xs"
                   : "text-[#64748B] hover:text-[#0F172A]"
@@ -690,8 +895,19 @@ export function KasirClient({
             </button>
             <button
               type="button"
+              onClick={() => setOrderTab("ACTIVE")}
+              className={`py-1.5 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                orderTab === "ACTIVE"
+                  ? "bg-white text-[#0F172A] shadow-xs"
+                  : "text-[#64748B] hover:text-[#0F172A]"
+              }`}
+            >
+              Dilayani ({activeQueue.length})
+            </button>
+            <button
+              type="button"
               onClick={() => setOrderTab("BOOKING")}
-              className={`py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`py-1.5 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
                 orderTab === "BOOKING"
                   ? "bg-white text-[#0F172A] shadow-xs"
                   : "text-[#64748B] hover:text-[#0F172A]"
@@ -704,7 +920,109 @@ export function KasirClient({
 
         {/* Middle Scrollable Section */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {orderTab === "BOOKING" && !selectedBookingId && (
+          {/* Kursi Aktif / Sedang Dilayani Tab */}
+          {orderTab === "ACTIVE" && (
+            <div className="space-y-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
+                Kursi Sedang Dilayani
+              </p>
+              {activeQueue.length === 0 ? (
+                <p className="text-xs text-[#94A3B8] py-6 text-center">
+                  Belum ada kursi sedang mencukur. Pilih paket &amp; capster lalu klik{" "}
+                  <span className="font-semibold text-[#0F172A]">Mulai Cukur</span>.
+                </p>
+              ) : (
+                activeQueue.map((chair) => (
+                  <div
+                    key={chair.id}
+                    className="border border-[#E5E7EB] rounded-xl p-3 space-y-2.5 bg-[#FAFAFA]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-[#0F172A]">{chair.customerName}</p>
+                        <p className="text-[11px] text-[#64748B]">
+                          Paket {chair.package.name} · Capster {chair.capster.name}
+                        </p>
+                        <p className="text-[10px] text-[#B45309] font-medium mt-0.5">
+                          ● Mulai pukul {formatTimeHHMM(chair.startedAt)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        title="Batalkan layanan"
+                        onClick={async () => {
+                          const res = await fetch(`/api/queue/${chair.id}`, {
+                            method: "DELETE",
+                          });
+                          if (res.ok) {
+                            setActiveQueue((prev) => prev.filter((q) => q.id !== chair.id));
+                            setCapsters((prev) =>
+                              prev.map((c) =>
+                                c.id === chair.capsterId ? { ...c, status: "TERSEDIA" } : c
+                              )
+                            );
+                          }
+                        }}
+                        className="w-6 h-6 rounded-lg hover:bg-[#FEE2E2] text-[#94A3B8] hover:text-[#DC2626] flex items-center justify-center cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCheckoutActiveChair(chair)}
+                      className="w-full py-2 rounded-lg bg-[#0F172A] hover:bg-[#1E293B] text-white text-[11px] font-semibold cursor-pointer"
+                    >
+                      Selesai &amp; Bayar ({formatRupiah(chair.package.price)})
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Selected Booking Banner (allows unselecting or deleting the active booking directly) */}
+          {orderTab === "WALK_IN" && selectedBookingId && (
+            <div className="bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748B]">
+                    Booking Dipilih
+                  </p>
+                  <p className="text-xs font-bold text-[#0F172A] truncate">
+                    {customerName || "Pelanggan Booking"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetCart();
+                      setOrderTab("BOOKING");
+                    }}
+                    className="px-2.5 py-1 rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F1F5F9] text-[10px] font-semibold text-[#0F172A] cursor-pointer"
+                  >
+                    Daftar Booking
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingBookingId === selectedBookingId}
+                    onClick={() => {
+                      const found = bookings.find((b) => b.id === selectedBookingId);
+                      if (found) handleDeleteBooking(found);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#FEE2E2] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-semibold disabled:opacity-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Hapus Booking
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Antrian Booking Tab */}
+          {orderTab === "BOOKING" && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
@@ -725,36 +1043,81 @@ export function KasirClient({
                   Belum ada antrian booking aktif.
                 </p>
               ) : (
-                bookings.map((bk) => (
-                  <button
-                    key={bk.id}
-                    type="button"
-                    onClick={() => handleSelectBooking(bk)}
-                    className="w-full text-left border border-[#E5E7EB] hover:border-[#0F172A] rounded-xl p-3 transition cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-[#0F172A]">{bk.customerName}</p>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          bk.status === "HADIR"
-                            ? "bg-[#DCFCE7] text-[#15803D]"
-                            : "bg-[#FEF3C7] text-[#B45309]"
-                        }`}
+                bookings.map((bk) => {
+                  const isDeleting = deletingBookingId === bk.id;
+                  return (
+                    <div
+                      key={bk.id}
+                      onClick={() => handleSelectBooking(bk)}
+                      className="w-full text-left border border-[#E5E7EB] hover:border-[#0F172A] rounded-xl p-3 space-y-2 transition cursor-pointer bg-white"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[#0F172A] truncate">
+                            {bk.customerName}
+                          </p>
+                          <p className="text-[11px] text-[#64748B] mt-0.5">
+                            {bk.scheduledTime} · Paket {bk.package.name} · {bk.capster.name}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleBookingStatus(bk);
+                          }}
+                          title="Ubah status kedatangan"
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 cursor-pointer ${
+                            bk.status === "HADIR"
+                              ? "bg-[#DCFCE7] text-[#15803D]"
+                              : "bg-[#FEF3C7] text-[#B45309]"
+                          }`}
+                        >
+                          {bk.status === "HADIR" ? "Hadir" : "Menunggu"}
+                        </button>
+                      </div>
+
+                      <div
+                        className="flex items-center justify-between gap-1.5 pt-1 border-t border-[#F8FAFC]"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {bk.status === "HADIR" ? "Hadir" : "Menunggu"}
-                      </span>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectBooking(bk)}
+                          className="flex-1 py-1.5 rounded-lg bg-[#0F172A] hover:bg-[#1E293B] text-white text-[10px] font-semibold cursor-pointer"
+                        >
+                          Proses Booking
+                        </button>
+                        <button
+                          type="button"
+                          title="Kirim pengingat WhatsApp"
+                          onClick={() => handleSendBookingWhatsApp(bk)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] text-[10px] font-semibold transition cursor-pointer"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          WA
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          title={`Hapus booking ${bk.customerName}`}
+                          aria-label={`Hapus booking ${bk.customerName}`}
+                          onClick={() => handleDeleteBooking(bk)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#FEE2E2] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-semibold disabled:opacity-50 transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          {isDeleting ? "..." : "Hapus"}
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-1">
-                      {bk.scheduledTime} · Paket {bk.package.name} · {bk.capster.name}
-                    </p>
-                  </button>
-                ))
+                  );
+                })
               )}
             </div>
           )}
 
           {/* Package Rows + Inline Capster & Status Controls */}
-          {packageCart.length > 0 && (
+          {orderTab === "WALK_IN" && packageCart.length > 0 && (
             <div className="space-y-3">
               {packageCart.map((entry, idx) => (
                 <div
@@ -791,10 +1154,8 @@ export function KasirClient({
                     </div>
                   </div>
 
-                  {/* Show Capster + Customer Status pickers right under the primary service row */}
                   {idx === 0 && (
                     <div className="relative grid grid-cols-2 gap-2">
-                      {/* Capster Selector Button */}
                       <button
                         type="button"
                         onClick={() => setShowCapsterDropdown((o) => !o)}
@@ -819,7 +1180,6 @@ export function KasirClient({
                         <ChevronDown className="w-3.5 h-3.5 text-[#64748B] shrink-0" />
                       </button>
 
-                      {/* Customer Status Button */}
                       <button
                         type="button"
                         onClick={() => {
@@ -839,7 +1199,6 @@ export function KasirClient({
                         <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" />
                       </button>
 
-                      {/* Floating Capster Dropdown */}
                       {showCapsterDropdown && (
                         <div className="absolute left-0 top-10 w-[260px] bg-white border border-[#E5E7EB] rounded-2xl shadow-xl p-2 z-30 space-y-1">
                           <p className="px-2.5 py-1 text-[10px] font-semibold text-[#64748B]">
@@ -928,7 +1287,7 @@ export function KasirClient({
           )}
 
           {/* Drink Rows */}
-          {drinkCart.length > 0 && (
+          {orderTab === "WALK_IN" && drinkCart.length > 0 && (
             <div className="space-y-3">
               {drinkCart.map((entry) => (
                 <div
@@ -965,8 +1324,7 @@ export function KasirClient({
             </div>
           )}
 
-          {/* Drink-only status selector shortcut */}
-          {packageCart.length === 0 && drinkCart.length > 0 && (
+          {orderTab === "WALK_IN" && packageCart.length === 0 && drinkCart.length > 0 && (
             <div className="pt-1">
               <button
                 type="button"
@@ -982,13 +1340,38 @@ export function KasirClient({
             </div>
           )}
 
-          {/* Empty State */}
           {totalQty === 0 && orderTab === "WALK_IN" && (
             <div className="py-12 text-center space-y-1.5">
               <p className="text-xs font-medium text-[#64748B]">Belum ada item dipilih</p>
               <p className="text-[11px] text-[#94A3B8]">
                 Pilih paket barber atau minuman showcase di sebelah kiri.
               </p>
+            </div>
+          )}
+
+          {/* Member Points Redeem Card */}
+          {selectedMember && maxUsablePoints > 0 && totalQty > 0 && (
+            <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl p-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-[#15803D] flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Poin {selectedMember.name}: {selectedMember.points.toLocaleString("id-ID")} poin
+                </p>
+                <p className="text-[10px] text-[#166534]">
+                  Dapat ditukar hingga {formatRupiah(maxUsablePoints * 10)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUseMemberPoints((p) => !p)}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold shrink-0 transition cursor-pointer ${
+                  useMemberPoints
+                    ? "bg-[#15803D] text-white"
+                    : "bg-white border border-[#86EFAC] text-[#15803D]"
+                }`}
+              >
+                {useMemberPoints ? "Dipakai ✓" : "Tukar Poin"}
+              </button>
             </div>
           )}
 
@@ -1024,14 +1407,14 @@ export function KasirClient({
             <button
               type="button"
               onClick={() => setShowDiskonModal(true)}
-              className={`py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                discountAmount > 0
+              className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                promoDiscountAmount > 0
                   ? "border-[#15803D] bg-[#F0FDF4] text-[#15803D]"
                   : "border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#0F172A]"
               }`}
             >
               <Percent className="w-3.5 h-3.5" />
-              {discountAmount > 0 ? "Diskon aktif" : "Diskon"}
+              {promoDiscountAmount > 0 ? "Diskon aktif" : "Diskon"}
             </button>
             <button
               type="button"
@@ -1039,7 +1422,7 @@ export function KasirClient({
                 setNotesDraft(notes);
                 setShowCatatanModal(true);
               }}
-              className={`py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                 notes
                   ? "border-[#0F172A] bg-[#F8FAFC] text-[#0F172A]"
                   : "border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#0F172A]"
@@ -1058,10 +1441,21 @@ export function KasirClient({
               </span>
             </div>
 
-            {discountAmount > 0 && (
+            {promoDiscountAmount > 0 && (
               <div className="flex items-center justify-between text-[#15803D]">
                 <span>{discount.label ?? "Diskon"}</span>
-                <span className="font-medium tabular-nums">-{formatRupiah(discountAmount)}</span>
+                <span className="font-medium tabular-nums">
+                  -{formatRupiah(promoDiscountAmount)}
+                </span>
+              </div>
+            )}
+
+            {pointsDiscountAmount > 0 && (
+              <div className="flex items-center justify-between text-[#15803D]">
+                <span>Tukar {redeemedPoints.toLocaleString("id-ID")} poin</span>
+                <span className="font-medium tabular-nums">
+                  -{formatRupiah(pointsDiscountAmount)}
+                </span>
               </div>
             )}
 
@@ -1087,27 +1481,50 @@ export function KasirClient({
             </div>
           </div>
 
-          <button
-            type="button"
-            disabled={totalQty === 0}
-            onClick={handleOpenCheckout}
-            className="w-full py-3 rounded-xl bg-[#15803D] hover:bg-[#166534] disabled:opacity-40 text-white text-xs font-semibold transition cursor-pointer"
-          >
-            Lanjut Transaksi
-          </button>
+          <div className="flex items-center gap-2">
+            {packageCart.length > 0 && !activeServiceId && (
+              <button
+                type="button"
+                disabled={startingQueue}
+                onClick={handleStartHaircutQueue}
+                title="Masukkan ke kursi sedang dilayani & ubah status capster otomatis"
+                className="py-3 px-3.5 rounded-xl border border-[#0F172A] hover:bg-[#F8FAFC] text-[#0F172A] text-xs font-semibold flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                {startingQueue ? "..." : "Mulai Cukur"}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={totalQty === 0}
+              onClick={handleOpenCheckout}
+              className="flex-1 py-3 rounded-xl bg-[#15803D] hover:bg-[#166534] disabled:opacity-40 text-white text-xs font-semibold transition cursor-pointer"
+            >
+              Lanjut Transaksi
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* Modals */}
+      {showShiftModal && (
+        <ShiftModal
+          onShiftStatusChange={setHasOpenShift}
+          onClose={() => setShowShiftModal(false)}
+        />
+      )}
+
       {showPelangganModal && (
         <PelangganModal
           orderCode={orderCode}
           initialIsMember={isMember}
           initialMember={selectedMember}
           members={members}
+          onMemberCreated={(newMem) => setMembers((prev) => [newMem, ...prev])}
           onConfirm={(res) => {
             setIsMember(res.isMember);
             setSelectedMember(res.member);
+            setUseMemberPoints(false);
             setCustomerName(res.member?.name ?? "");
             setShowPelangganModal(false);
           }}

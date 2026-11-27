@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { transactionUpdateSchema } from "@/lib/validators";
+import { getCurrentUser } from "@/lib/session";
+import { isManagerRole, verifyManagerOverridePassword } from "@/lib/rbac";
 
 export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/transactions/[id]">) {
   try {
@@ -14,7 +16,28 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/transactio
       );
     }
 
-    const existing = await prisma.transaction.findUnique({ where: { id } });
+    // Refund authorization check: Owner/Admin directly, or Kasir with Owner/Admin password override
+    if (parsed.data.status === "REFUND") {
+      const user = await getCurrentUser();
+      if (!isManagerRole(user?.role)) {
+        const authorized = await verifyManagerOverridePassword(parsed.data.ownerPassword);
+        if (!authorized) {
+          return NextResponse.json(
+            {
+              error:
+                "Otorisasi diperlukan: masukkan password Owner atau Admin yang valid untuk melakukan Refund.",
+              requiresManagerAuth: true,
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
+    const existing = await prisma.transaction.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Transaksi tidak ditemukan" }, { status: 404 });
     }
@@ -47,6 +70,18 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/transactio
         },
         include: { items: true },
       });
+
+      // Restore drink stock when transitioning to REFUND
+      if (existing.status !== "REFUND" && nextStatus === "REFUND") {
+        for (const item of existing.items) {
+          if (item.itemType === "DRINK" && item.drinkId) {
+            await tx.drink.update({
+              where: { id: item.drinkId },
+              data: { stock: { increment: item.quantity } },
+            });
+          }
+        }
+      }
 
       if (existing.bookingId && nextStatus === "SELESAI") {
         await tx.booking.update({

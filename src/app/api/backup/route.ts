@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   await connection();
   try {
-    const [packages, drinks, capsters, members, vouchers, bookings, transactions, settings, staff] =
+    const [packages, drinks, capsters, members, vouchers, bookings, shifts, stockLogs, transactions, settings, staff] =
       await Promise.all([
         prisma.package.findMany(),
         prisma.drink.findMany(),
@@ -12,6 +12,8 @@ export async function GET() {
         prisma.member.findMany(),
         prisma.voucher.findMany(),
         prisma.booking.findMany(),
+        prisma.cashShift.findMany({ include: { expenses: true } }),
+        prisma.stockLog.findMany({ orderBy: { createdAt: "desc" }, take: 200 }),
         prisma.transaction.findMany({ include: { items: true }, orderBy: { orderNumber: "desc" } }),
         prisma.storeSetting.findMany(),
         prisma.staffUser.findMany({
@@ -29,6 +31,8 @@ export async function GET() {
         members,
         vouchers,
         bookings,
+        shifts,
+        stockLogs,
         transactions,
         settings,
         staff,

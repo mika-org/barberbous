@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Printer, Download, Plus, Trash2 } from "lucide-react";
+import { Printer, Download, Plus, Trash2, Lock, Ticket } from "lucide-react";
+import { formatRupiah } from "@/lib/format";
 
 export interface StoreSettingModel {
   id: string;
@@ -31,6 +32,16 @@ export interface StaffUserModel {
   username: string;
   email: string | null;
   role: string;
+  isActive: boolean;
+}
+
+export interface VoucherModel {
+  id: string;
+  code: string;
+  label: string;
+  discountType: "PERCENT" | "NOMINAL";
+  discountValue: number;
+  minSubtotal: number;
   isActive: boolean;
 }
 
@@ -64,17 +75,30 @@ function Toggle({
 export function SetelanClient({
   initialSetting,
   initialStaff,
+  initialVouchers = [],
+  userRole = "Kasir",
 }: {
   initialSetting: StoreSettingModel;
   initialStaff: StaffUserModel[];
+  initialVouchers?: VoucherModel[];
+  userRole?: string;
 }) {
+  const isManager = userRole === "Owner" || userRole === "Admin";
   const [section, setSection] = useState<
-    "umum" | "pembayaran" | "pengguna" | "cadangan"
+    "umum" | "pembayaran" | "voucher" | "pengguna" | "cadangan"
   >("umum");
   const [setting, setSetting] = useState<StoreSettingModel>(initialSetting);
   const [staff, setStaff] = useState<StaffUserModel[]>(initialStaff);
+  const [vouchers, setVouchers] = useState<VoucherModel[]>(initialVouchers);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Add voucher form
+  const [newVoucherCode, setNewVoucherCode] = useState("");
+  const [newVoucherLabel, setNewVoucherLabel] = useState("");
+  const [newVoucherType, setNewVoucherType] = useState<"PERCENT" | "NOMINAL">("PERCENT");
+  const [newVoucherValue, setNewVoucherValue] = useState("10");
+  const [newVoucherMin, setNewVoucherMin] = useState("0");
 
   // Add staff form
   const [newStaffName, setNewStaffName] = useState("");
@@ -166,6 +190,61 @@ export function SetelanClient({
     if (res.ok) {
       setStaff((prev) => prev.filter((u) => u.id !== id));
       showToast("Pengguna dihapus");
+    } else {
+      const json = await res.json().catch(() => ({}));
+      showToast(json.error ?? "Gagal menghapus pengguna");
+    }
+  };
+
+  const handleAddVoucher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/vouchers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: newVoucherCode.toUpperCase().trim(),
+        label: newVoucherLabel.trim(),
+        discountType: newVoucherType,
+        discountValue: Number(newVoucherValue) || 0,
+        minSubtotal: Number(newVoucherMin) || 0,
+        isActive: true,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      showToast(json.error ?? "Gagal menambah kode promo");
+      return;
+    }
+    setVouchers((prev) => [json.data, ...prev]);
+    setNewVoucherCode("");
+    setNewVoucherLabel("");
+    setNewVoucherValue("10");
+    setNewVoucherMin("0");
+    showToast("Kode voucher berhasil ditambahkan");
+  };
+
+  const handleToggleVoucher = async (voucher: VoucherModel) => {
+    const res = await fetch(`/api/vouchers/${voucher.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !voucher.isActive }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      showToast(json.error ?? "Akses dibatasi");
+      return;
+    }
+    setVouchers((prev) => prev.map((v) => (v.id === voucher.id ? json.data : v)));
+  };
+
+  const handleDeleteVoucher = async (id: string) => {
+    const res = await fetch(`/api/vouchers/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setVouchers((prev) => prev.filter((v) => v.id !== id));
+      showToast("Voucher dihapus");
+    } else {
+      const json = await res.json().catch(() => ({}));
+      showToast(json.error ?? "Akses dibatasi");
     }
   };
 
@@ -181,6 +260,7 @@ export function SetelanClient({
             [
               { id: "umum", label: "Umum" },
               { id: "pembayaran", label: "Metode pembayaran" },
+              { id: "voucher", label: "Voucher & promo" },
               { id: "pengguna", label: "Pengguna & role" },
               { id: "cadangan", label: "Cadangan data" },
             ] as const
@@ -203,6 +283,15 @@ export function SetelanClient({
 
       {/* Main Settings Content */}
       <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
+        {!isManager && (
+          <div className="max-w-3xl mb-4 bg-[#FFFBEB] border border-[#FDE68A] rounded-xl px-4 py-2.5 flex items-center gap-2 text-xs text-[#B45309]">
+            <Lock className="w-4 h-4 shrink-0" />
+            <span>
+              Mode Lihat Saja ({userRole}) — penyimpanan setelan toko, manajemen voucher, dan akun
+              pengguna dikhususkan untuk role <strong>Owner</strong> atau <strong>Admin</strong>.
+            </span>
+          </div>
+        )}
         {section === "umum" && (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -507,6 +596,150 @@ export function SetelanClient({
                   className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {section === "voucher" && (
+          <div className="max-w-2xl space-y-5">
+            <div>
+              <h1 className="text-xl font-bold text-[#0F172A]">Voucher &amp; promo</h1>
+              <p className="text-xs text-[#64748B] mt-0.5">
+                Kelola kode promo diskon persen maupun potongan nominal yang tampil di Kasir
+              </p>
+            </div>
+
+            {isManager && (
+              <form
+                onSubmit={handleAddVoucher}
+                className="bg-white border border-[#E5E7EB] rounded-2xl p-4 space-y-3"
+              >
+                <p className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
+                  <Ticket className="w-3.5 h-3.5 text-[#15803D]" />
+                  Buat Kode Promo Baru
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] text-[#64748B] mb-1">Kode Voucher</label>
+                    <input
+                      required
+                      value={newVoucherCode}
+                      onChange={(e) => setNewVoucherCode(e.target.value.toUpperCase())}
+                      placeholder="Contoh: JUMAT15"
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs font-bold uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#64748B] mb-1">Nama / Label Promo</label>
+                    <input
+                      required
+                      value={newVoucherLabel}
+                      onChange={(e) => setNewVoucherLabel(e.target.value)}
+                      placeholder="Contoh: Promo Jumat Berkah 15%"
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                  <div>
+                    <label className="block text-[11px] text-[#64748B] mb-1">Tipe Potongan</label>
+                    <select
+                      value={newVoucherType}
+                      onChange={(e) =>
+                        setNewVoucherType(e.target.value as "PERCENT" | "NOMINAL")
+                      }
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs bg-white"
+                    >
+                      <option value="PERCENT">Persentase (%)</option>
+                      <option value="NOMINAL">Nominal (Rp)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#64748B] mb-1">
+                      Nilai ({newVoucherType === "PERCENT" ? "%" : "Rp"})
+                    </label>
+                    <input
+                      required
+                      type="number"
+                      min={1}
+                      value={newVoucherValue}
+                      onChange={(e) => setNewVoucherValue(e.target.value)}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#64748B] mb-1">
+                      Min. Belanja (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={5000}
+                      value={newVoucherMin}
+                      onChange={(e) => setNewVoucherMin(e.target.value)}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tambah Voucher
+                </button>
+              </form>
+            )}
+
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
+              <table className="w-full min-w-[480px] text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] text-[#64748B]">
+                    <th className="py-3 px-4">Kode</th>
+                    <th className="py-3 px-4">Deskripsi</th>
+                    <th className="py-3 px-4 text-right">Potongan</th>
+                    <th className="py-3 px-4 text-right">Min. Belanja</th>
+                    <th className="py-3 px-4 text-right">Aktif</th>
+                    {isManager && <th className="py-3 px-4 text-right"></th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {vouchers.map((v) => (
+                    <tr key={v.id}>
+                      <td className="py-3 px-4 font-bold text-[#0F172A]">{v.code}</td>
+                      <td className="py-3 px-4 text-[#475569]">{v.label}</td>
+                      <td className="py-3 px-4 text-right font-semibold text-[#15803D] tabular-nums">
+                        {v.discountType === "PERCENT"
+                          ? `${v.discountValue}%`
+                          : formatRupiah(v.discountValue)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-[#64748B] tabular-nums">
+                        {v.minSubtotal > 0 ? formatRupiah(v.minSubtotal) : "-"}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Toggle
+                          checked={v.isActive}
+                          onChange={() => handleToggleVoucher(v)}
+                          label={`Toggle ${v.code}`}
+                        />
+                      </td>
+                      {isManager && (
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteVoucher(v.id)}
+                            className="text-[#DC2626] hover:bg-[#FEF2F2] p-1.5 rounded-lg cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

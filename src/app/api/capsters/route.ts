@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { capsterCreateSchema } from "@/lib/validators";
+import { requireManager } from "@/lib/rbac";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -73,6 +74,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await req.json();
     const parsed = capsterCreateSchema.safeParse(body);
@@ -99,6 +103,7 @@ export async function POST(req: NextRequest) {
         bgColor: parsed.data.bgColor ?? "#C4B5E3",
         status: parsed.data.status ?? "TERSEDIA",
         rating: parsed.data.rating ?? 4.9,
+        commissionPct: parsed.data.commissionPct ?? 40,
         joinedLabel: parsed.data.joinedLabel ?? "Nov 2026",
         isActive: parsed.data.isActive,
         sortOrder: (maxOrder._max.sortOrder ?? 0) + 1,
