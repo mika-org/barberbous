@@ -123,18 +123,6 @@ export default function LoginPage() {
             {loading ? "Memverifikasi..." : "Masuk"}
           </button>
         </form>
-
-        <div className="mt-5 pt-4 border-t border-[#F1F5F9] text-[11px] text-[#64748B] space-y-1">
-          <p className="font-semibold text-[#475569]">Akun default:</p>
-          <div className="flex justify-between">
-            <span>Kasir: <code className="text-[#0F172A] font-medium">rehan</code></span>
-            <span>Password: <code className="text-[#0F172A] font-medium">kasir123</code></span>
-          </div>
-          <div className="flex justify-between">
-            <span>Owner: <code className="text-[#0F172A] font-medium">aditia</code></span>
-            <span>Password: <code className="text-[#0F172A] font-medium">admin123</code></span>
-          </div>
-        </div>
       </div>
     </div>
   );
