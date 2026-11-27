@@ -27,6 +27,7 @@ import {
 interface ReportStatItem {
   id: string;
   name: string;
+  category?: string;
   price?: number;
   sold: number;
   stock?: number;
@@ -276,6 +277,7 @@ export function LaporanClient({
       drinkStats: report.drinkStats.map((d) => ({
         id: d.id,
         name: d.name,
+        category: d.category,
         price: d.price,
         sold: d.sold,
         revenue: d.revenue,
@@ -1040,11 +1042,11 @@ export function LaporanClient({
             </div>
           )}
 
-          {/* ==================== PER MINUMAN VIEW ==================== */}
+          {/* ==================== UNIT KAFE (MINUMAN & MAKANAN) VIEW ==================== */}
           {view === "drink" && (
             <div className="space-y-4 mt-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-[#64748B] mr-1">Pilih minuman:</span>
+                <span className="text-xs text-[#64748B] mr-1">Pilih menu kafe:</span>
                 <button
                   type="button"
                   onClick={() => setSelectedDrinkId("ALL")}
@@ -1054,7 +1056,7 @@ export function LaporanClient({
                       : "bg-white border border-[#E5E7EB] text-[#475569]"
                   }`}
                 >
-                  Semua minuman
+                  Semua menu kafe
                 </button>
                 {drinks.map((d) => (
                   <button
@@ -1075,15 +1077,18 @@ export function LaporanClient({
               {selectedDrinkId === "ALL" || !report.drinkDetail ? (
                 <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
                   <div className="p-5 border-b border-[#F1F5F9]">
-                    <h2 className="text-sm font-bold text-[#0F172A]">Penjualan per minuman</h2>
+                    <h2 className="text-sm font-bold text-[#0F172A]">
+                      Pendapatan Unit Kafe (Minuman &amp; Makanan)
+                    </h2>
                     <p className="text-xs text-[#64748B] mt-0.5">
-                      {rangeText} · {drinks.length} minuman di kulkas
+                      {rangeText} · {drinks.length} produk kafe aktif (100% pendapatan toko)
                     </p>
                   </div>
-                  <table className="w-full min-w-[520px] text-left border-collapse text-xs">
+                  <table className="w-full min-w-[540px] text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
-                        <th className="py-3 px-5">Minuman</th>
+                        <th className="py-3 px-5">Menu Kafe</th>
+                        <th className="py-3 px-5">Kategori</th>
                         <th className="py-3 px-5 text-right">Terjual</th>
                         <th className="py-3 px-5 text-right">Pendapatan</th>
                         <th className="py-3 px-5">Kontribusi</th>
@@ -1099,6 +1104,9 @@ export function LaporanClient({
                               </div>
                               <span className="font-semibold text-[#0F172A]">{item.name}</span>
                             </div>
+                          </td>
+                          <td className="py-3.5 px-5 text-[#64748B]">
+                            {item.category ?? "Minuman"}
                           </td>
                           <td className="py-3.5 px-5 text-right tabular-nums text-[#0F172A]">
                             {item.sold}
@@ -1122,7 +1130,9 @@ export function LaporanClient({
                         </tr>
                       ))}
                       <tr className="bg-[#FAFAFA] font-bold text-[#0F172A]">
-                        <td className="py-3.5 px-5">Total</td>
+                        <td className="py-3.5 px-5" colSpan={2}>
+                          Total Unit Kafe
+                        </td>
                         <td className="py-3.5 px-5 text-right tabular-nums">
                           {report.summary.drinkSoldTotal}
                         </td>
@@ -1149,13 +1159,13 @@ export function LaporanClient({
                       {formatRupiah(report.drinkDetail.revenue)}
                     </p>
                     <p className="text-[11px] text-[#64748B] mt-1">
-                      {report.drinkDetail.revenuePct}% dari total minuman
+                      {report.drinkDetail.revenuePct}% dari total unit kafe
                     </p>
                   </div>
                   <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
-                    <p className="text-[11px] text-[#64748B]">Botol terjual</p>
+                    <p className="text-[11px] text-[#64748B]">Jumlah terjual</p>
                     <p className="text-xl font-bold text-[#0F172A] mt-1 tabular-nums">
-                      {report.drinkDetail.sold} botol
+                      {report.drinkDetail.sold} item
                     </p>
                     <p className="text-[11px] text-[#64748B] mt-1">
                       Walk-in {report.drinkDetail.walkInCount} · Booking{" "}
@@ -1163,9 +1173,9 @@ export function LaporanClient({
                     </p>
                   </div>
                   <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
-                    <p className="text-[11px] text-[#64748B]">Sisa stok kulkas</p>
+                    <p className="text-[11px] text-[#64748B]">Sisa stok kafe</p>
                     <p className="text-xl font-bold text-[#0F172A] mt-1 tabular-nums">
-                      {report.drinkDetail.drink.stock} botol
+                      {report.drinkDetail.drink.stock} stok
                     </p>
                     <p className="text-[11px] text-[#64748B] mt-1">
                       Harga satuan {formatRupiah(report.drinkDetail.drink.price)}

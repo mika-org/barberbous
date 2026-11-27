@@ -33,7 +33,7 @@ async function CapsterDataLoader() {
       }),
       prisma.drink.findMany({
         orderBy: { sortOrder: "asc" },
-        select: { id: true, name: true, price: true },
+        select: { id: true, name: true, category: true, price: true },
       }),
       prisma.transaction.findMany({
         where: { status: "SELESAI", createdAt: { gte: todayStart, lte: todayEnd } },
@@ -310,6 +310,7 @@ async function CapsterDataLoader() {
     return {
       id: d.id,
       name: d.name,
+      category: d.category,
       price: d.price,
       sold: dRows.reduce((s, r) => s + r.quantity, 0),
       revenue: dRows.reduce((s, r) => s + r.revenueShare, 0),

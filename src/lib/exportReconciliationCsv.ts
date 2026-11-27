@@ -49,6 +49,7 @@ export interface ReconciliationDetailLine {
 export interface CatalogStatRow {
   id: string;
   name: string;
+  category?: string;
   price?: number;
   sold: number;
   revenue: number;
@@ -642,7 +643,7 @@ export function buildTwoSheetFinancialWorkbook(
   if (p.drinkStats && p.drinkStats.length > 0) {
     for (const d of p.drinkStats) {
       sheet1Rows.push([
-        T("KAFE (Minuman)"),
+        T(`KAFE (${d.category ?? "Minuman"})`),
         T(`${d.name}${d.price ? ` (@Rp${d.price.toLocaleString("id-ID")})` : ""}`),
         N(d.sold),
         N(0),

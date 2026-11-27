@@ -247,6 +247,7 @@ export async function GET(req: NextRequest) {
       return {
         id: d.id,
         name: d.name,
+        category: d.category,
         price: d.price,
         sold,
         stock: d.stock,
