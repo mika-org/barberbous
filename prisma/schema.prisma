@@ -255,6 +255,21 @@ model CashExpense {
   @@schema("barberbous")
 }
 
+model StoreExpense {
+  id             String        @id @default(cuid())
+  amount         Int
+  description    String
+  category       String        @default("Operasional")
+  paymentMethod  PaymentMethod @default(TUNAI)
+  notes          String?
+  shiftExpenseId String?       @unique
+  createdBy      String        @default("Kasir")
+  expenseDate    DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+
+  @@schema("barberbous")
+}
+
 model Transaction {
   id                 String            @id @default(cuid())
   orderNumber        Int               @unique
@@ -281,10 +296,12 @@ model Transaction {
   voucherCode        String?
   redeemedPoints     Int               @default(0)
   pointsDiscount     Int               @default(0)
-  taxAmount          Int               @default(0)
-  serviceFeeAmount   Int               @default(0)
-  total              Int
-  paymentMethod      PaymentMethod
+  taxAmount              Int               @default(0)
+  serviceFeeAmount       Int               @default(0)
+  total                  Int
+  capsterCommissionTotal Int               @default(0)
+  ownerPackageShareTotal Int               @default(0)
+  paymentMethod          PaymentMethod
   cashReceived       Int?
   changeAmount       Int?
   status             TransactionStatus @default(SELESAI)
@@ -306,11 +323,18 @@ model TransactionItem {
   package            Package?    @relation(fields: [packageId], references: [id])
   drinkId            String?
   drink              Drink?      @relation(fields: [drinkId], references: [id])
+  capsterId          String?
+  capsterName        String?
   packageName        String
   packageDescription String
   unitPrice          Int
   quantity           Int         @default(1)
   lineTotal          Int
+  netPackageAmount   Int         @default(0)
+  commissionPct      Int         @default(40)
+  ownerPct           Int         @default(60)
+  capsterCommission  Int         @default(0)
+  ownerShare         Int         @default(0)
 
   @@schema("barberbous")
 }
@@ -334,7 +358,9 @@ model StoreSetting {
   tunaiEnabled      Boolean  @default(true)
   qrisEnabled       Boolean  @default(true)
   debitEnabled      Boolean  @default(true)
-  qrisMerchantName  String   @default("BARBERBOUS BANDUNG")
+  qrisMerchantName  String   @default("Barberbous, Service")
+  qrisNmid          String   @default("ID1026609626373")
+  qrisImageUrl      String   @default("/images/qris.jpeg")
   updatedAt         DateTime @updatedAt
 
   @@schema("barberbous")

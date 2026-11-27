@@ -11,8 +11,20 @@ import {
   Trash2,
   MessageCircle,
   AlertTriangle,
+  Scissors,
+  Download,
 } from "lucide-react";
 import { formatRupiah, getInitials } from "@/lib/format";
+import {
+  CapsterCommissionModal,
+  type PackageCommissionRow,
+  type HaircutCommissionHistoryItem,
+} from "../CapsterCommissionModal";
+import {
+  buildTwoSheetFinancialWorkbook,
+  triggerXlsxDownload,
+  type CapsterFinancialExportPayload,
+} from "@/lib/exportReconciliationCsv";
 
 export interface CapsterScheduleItem {
   id: string;
@@ -33,14 +45,19 @@ export interface CapsterModel {
   status: "TERSEDIA" | "MELAYANI" | "ISTIRAHAT";
   rating: number;
   commissionPct: number;
+  ownerPct: number;
   joinedLabel: string;
   isActive: boolean;
   todayRevenue: number;
+  todayPackageRevenue: number;
   todayCommission: number;
+  todayOwnerShare: number;
   todayServices: number;
   sharePct: number;
   topPackage: string;
   schedule: CapsterScheduleItem[];
+  packageBreakdown?: PackageCommissionRow[];
+  haircutHistory?: HaircutCommissionHistoryItem[];
 }
 
 type PanelMode = "detail" | "create" | "edit";
@@ -48,11 +65,18 @@ type PanelMode = "detail" | "create" | "edit";
 export function CapsterClient({
   initialCapsters,
   packages = [],
+  allCapstersBreakdown,
+  todayFinancialExportPayload,
   storeName = "BARBERBOUS",
   userRole = "Kasir",
 }: {
   initialCapsters: CapsterModel[];
-  packages?: Array<{ id: string; name: string }>;
+  packages?: Array<{ id: string; name: string; price?: number }>;
+  allCapstersBreakdown?: {
+    packageBreakdown: PackageCommissionRow[];
+    haircutHistory: HaircutCommissionHistoryItem[];
+  };
+  todayFinancialExportPayload?: CapsterFinancialExportPayload;
   storeName?: string;
   userRole?: string;
 }) {
@@ -74,6 +98,16 @@ export function CapsterClient({
   const [addingSchedule, setAddingSchedule] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [waToast, setWaToast] = useState<string | null>(null);
+  const [commissionModal, setCommissionModal] = useState<{
+    title: string;
+    subtitle: string;
+    ownerPct: number;
+    commissionPct: number;
+    showCapsterColumn: boolean;
+    packageBreakdown: PackageCommissionRow[];
+    haircutHistory: HaircutCommissionHistoryItem[];
+    fullExportPayload?: CapsterFinancialExportPayload;
+  } | null>(null);
 
   // Form states
   const [nameInput, setNameInput] = useState("");
@@ -187,6 +221,7 @@ export function CapsterClient({
     e.preventDefault();
     setSaving(true);
     setFeedback(null);
+    const pct = Math.min(100, Math.max(0, Number(commissionInput) || 40));
     try {
       const res = await fetch("/api/capsters", {
         method: "POST",
@@ -194,7 +229,7 @@ export function CapsterClient({
         body: JSON.stringify({
           name: nameInput,
           phone: phoneInput,
-          commissionPct: Number(commissionInput) || 40,
+          commissionPct: pct,
           status: statusInput,
           bgColor: bgColorInput,
           photoUrl: photoInput,
@@ -205,8 +240,11 @@ export function CapsterClient({
       if (!res.ok) throw new Error(json.error);
       const newEntry: CapsterModel = {
         ...json.data,
+        ownerPct: 100 - (json.data.commissionPct ?? 40),
         todayRevenue: 0,
+        todayPackageRevenue: 0,
         todayCommission: 0,
+        todayOwnerShare: 0,
         todayServices: 0,
         sharePct: 0,
         topPackage: "Basic",
@@ -227,6 +265,7 @@ export function CapsterClient({
     if (!selectedCapster) return;
     setSaving(true);
     setFeedback(null);
+    const pct = Math.min(100, Math.max(0, Number(commissionInput) || 40));
     try {
       const res = await fetch(`/api/capsters/${selectedCapster.id}`, {
         method: "PATCH",
@@ -234,7 +273,7 @@ export function CapsterClient({
         body: JSON.stringify({
           name: nameInput,
           phone: phoneInput,
-          commissionPct: Number(commissionInput) || 40,
+          commissionPct: pct,
           status: statusInput,
           bgColor: bgColorInput,
           photoUrl: photoInput,
@@ -244,7 +283,18 @@ export function CapsterClient({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setCapsters((prev) =>
-        prev.map((c) => (c.id === json.data.id ? { ...c, ...json.data } : c))
+        prev.map((c) => {
+          if (c.id !== json.data.id) return c;
+          const nextCapPct = json.data.commissionPct ?? 40;
+          const nextComm = Math.round((c.todayPackageRevenue * nextCapPct) / 100);
+          return {
+            ...c,
+            ...json.data,
+            ownerPct: 100 - nextCapPct,
+            todayCommission: nextComm,
+            todayOwnerShare: Math.max(0, c.todayPackageRevenue - nextComm),
+          };
+        })
       );
       setPanelMode("detail");
     } catch (err: unknown) {
@@ -302,6 +352,9 @@ export function CapsterClient({
     );
   };
 
+  const draftCapsterPct = Math.min(100, Math.max(0, Number(commissionInput) || 0));
+  const draftOwnerPct = 100 - draftCapsterPct;
+
   return (
     <>
       <main className="flex-1 bg-[#FAFAFA] p-4 sm:p-5 lg:p-6 overflow-y-auto min-w-0">
@@ -310,11 +363,46 @@ export function CapsterClient({
           <div>
             <h1 className="text-xl font-bold text-[#0F172A]">Capster</h1>
             <p className="text-xs text-[#64748B] mt-0.5">
-              {capsters.length} capster · {totalServicesToday} layanan hari ini
+              {capsters.length} capster · {totalServicesToday} layanan hari ini · Skema bagi hasil{" "}
+              <span className="font-semibold text-[#0F172A]">Owner 60% : Capster 40%</span>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            {todayFinancialExportPayload && (
+              <button
+                type="button"
+                onClick={() => {
+                  const bytes = buildTwoSheetFinancialWorkbook(todayFinancialExportPayload);
+                  triggerXlsxDownload(bytes, "rekap-2sheet-barber-kafe-saldo-hari-ini.xlsx");
+                }}
+                className="bg-white border border-[#E5E7EB] hover:border-[#0F172A] text-[#0F172A] rounded-xl px-3.5 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Download className="w-3.5 h-3.5 text-[#15803D]" />
+                Ekspor 2 Sheet (.xlsx)
+              </button>
+            )}
+            {allCapstersBreakdown && (
+              <button
+                type="button"
+                onClick={() =>
+                  setCommissionModal({
+                    title: "Semua Capster",
+                    subtitle: "Hari ini · Rekap seluruh capster (Owner 60% : Capster 40%)",
+                    ownerPct: 60,
+                    commissionPct: 40,
+                    showCapsterColumn: true,
+                    packageBreakdown: allCapstersBreakdown.packageBreakdown,
+                    haircutHistory: allCapstersBreakdown.haircutHistory,
+                    fullExportPayload: todayFinancialExportPayload,
+                  })
+                }
+                className="bg-white border border-[#E5E7EB] hover:border-[#0F172A] text-[#0F172A] rounded-xl px-3.5 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Scissors className="w-3.5 h-3.5 text-[#15803D]" />
+                List Paket &amp; Komisi
+              </button>
+            )}
             {isManager && (
               <button
                 type="button"
@@ -366,14 +454,14 @@ export function CapsterClient({
 
         {/* Capster Table */}
         <div className="mt-4 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
-          <table className="w-full min-w-[580px] text-left border-collapse">
+          <table className="w-full min-w-[640px] text-left border-collapse">
             <thead>
               <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
                 <th className="py-3 px-4">Capster</th>
-                <th className="py-3 px-4">No. telepon</th>
                 <th className="py-3 px-4 text-right">Layanan</th>
-                <th className="py-3 px-4 text-right">Pendapatan</th>
-                <th className="py-3 px-4 text-right">Komisi</th>
+                <th className="py-3 px-4 text-right">Omzet Paket</th>
+                <th className="py-3 px-4 text-right">Owner (60%)</th>
+                <th className="py-3 px-4 text-right">Capster (40%)</th>
                 <th className="py-3 px-4 text-right">Status</th>
               </tr>
             </thead>
@@ -418,17 +506,19 @@ export function CapsterClient({
                           <div>
                             <p className="font-semibold text-[#0F172A]">{cap.name}</p>
                             <p className="text-[11px] text-[#94A3B8]">
-                              {cap.code} · {cap.commissionPct}% bagi hasil
+                              {cap.code} · Owner {cap.ownerPct}% / Capster {cap.commissionPct}%
                             </p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-[#475569] tabular-nums">{cap.phone}</td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
                         {cap.todayServices}
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
-                        {formatRupiah(cap.todayRevenue)}
+                        {formatRupiah(cap.todayPackageRevenue)}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
+                        {formatRupiah(cap.todayOwnerShare)}
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#15803D] tabular-nums">
                         {formatRupiah(cap.todayCommission)}
@@ -455,7 +545,7 @@ export function CapsterClient({
           mobileDrawerOpen
             ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-[380px] shadow-2xl"
             : "hidden"
-        } lg:static lg:flex lg:w-[335px] xl:w-[380px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
+        } lg:static lg:flex lg:w-[340px] xl:w-[385px] shrink-0 bg-white border-l border-[#E5E7EB] p-6 flex-col justify-between overflow-y-auto`}
       >
         {(panelMode === "create" || panelMode === "edit") && (
           <form
@@ -518,31 +608,48 @@ export function CapsterClient({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                    No. telepon
+              <div>
+                <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                  No. telepon
+                </label>
+                <input
+                  required
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                />
+              </div>
+
+              <div className="bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-[#0F172A]">
+                    Persentase Bagi Hasil Paket
                   </label>
-                  <input
-                    required
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setCommissionInput("40")}
+                    className="text-[10px] font-semibold text-[#15803D] hover:underline cursor-pointer"
+                  >
+                    Standar 60% : 40%
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                    Bagi hasil / Komisi (%)
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={commissionInput}
-                    onChange={(e) => setCommissionInput(e.target.value)}
-                    className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs font-bold text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-                  />
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white border border-[#E5E7EB] rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-[#64748B]">Owner (%)</p>
+                    <p className="font-bold text-[#0F172A] mt-0.5">{draftOwnerPct}%</p>
+                  </div>
+                  <div className="bg-white border border-[#0F172A] rounded-lg px-3 py-1.5">
+                    <label className="block text-[10px] text-[#64748B]">Capster (%)</label>
+                    <input
+                      required
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={commissionInput}
+                      onChange={(e) => setCommissionInput(e.target.value)}
+                      className="w-full font-bold text-[#15803D] focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -568,25 +675,6 @@ export function CapsterClient({
                           ? "Melayani"
                           : "Istirahat"}
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-[#64748B] mb-1.5">
-                  Warna latar kartu
-                </label>
-                <div className="flex items-center gap-2">
-                  {["#C4B5E3", "#E59A1A", "#EE3E7D", "#0F172A", "#15803D"].map((hex) => (
-                    <button
-                      key={hex}
-                      type="button"
-                      onClick={() => setBgColorInput(hex)}
-                      className={`w-7 h-7 rounded-full border-2 cursor-pointer ${
-                        bgColorInput === hex ? "border-[#0F172A] scale-110" : "border-transparent"
-                      }`}
-                      style={{ backgroundColor: hex }}
-                    />
                   ))}
                 </div>
               </div>
@@ -645,7 +733,7 @@ export function CapsterClient({
               </div>
 
               <div
-                className="w-full h-32 rounded-2xl overflow-hidden flex items-center justify-center text-white text-2xl font-bold"
+                className="w-full h-28 rounded-2xl overflow-hidden flex items-center justify-center text-white text-2xl font-bold"
                 style={{ backgroundColor: selectedCapster.bgColor }}
               >
                 {selectedCapster.photoUrl ? (
@@ -659,7 +747,7 @@ export function CapsterClient({
                 )}
               </div>
 
-              {/* 1-Click Live Status Switcher for Kasir & Owner */}
+              {/* 1-Click Live Status Switcher */}
               <div className="bg-[#F4F4F5] p-1 rounded-xl grid grid-cols-3 gap-1">
                 {(["TERSEDIA", "MELAYANI", "ISTIRAHAT"] as const).map((st) => (
                   <button
@@ -681,19 +769,69 @@ export function CapsterClient({
                 ))}
               </div>
 
-              <div className="bg-[#F4F4F5] rounded-2xl p-4 space-y-1">
-                <p className="text-[11px] text-[#64748B]">Pendapatan hari ini</p>
-                <p className="text-2xl font-bold text-[#0F172A] tabular-nums">
-                  {formatRupiah(selectedCapster.todayRevenue)}{" "}
-                  <span className="text-xs font-normal text-[#64748B]">hari ini</span>
-                </p>
-                <p className="text-[11px] text-[#15803D] font-semibold">
-                  Estimasi komisi ({selectedCapster.commissionPct}%):{" "}
-                  {formatRupiah(selectedCapster.todayCommission)}
-                </p>
+              {/* Explicit 60% Owner : 40% Capster Split Card */}
+              <div className="bg-[#F8FAFC] border border-[#E5E7EB] rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-[#64748B]">
+                    Omzet Paket Hari Ini
+                  </p>
+                  <p className="text-sm font-bold text-[#0F172A] tabular-nums">
+                    {formatRupiah(selectedCapster.todayPackageRevenue)}
+                  </p>
+                </div>
+
+                {/* Split Bar */}
+                <div className="w-full h-2 rounded-full bg-[#E5E7EB] overflow-hidden flex">
+                  <div
+                    className="bg-[#0F172A] h-full"
+                    style={{ width: `${selectedCapster.ownerPct}%` }}
+                  />
+                  <div
+                    className="bg-[#15803D] h-full"
+                    style={{ width: `${selectedCapster.commissionPct}%` }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-white border border-[#E5E7EB] rounded-xl p-2.5">
+                    <p className="text-[10px] font-semibold text-[#64748B]">
+                      Owner ({selectedCapster.ownerPct}%)
+                    </p>
+                    <p className="text-sm font-bold text-[#0F172A] mt-0.5 tabular-nums">
+                      {formatRupiah(selectedCapster.todayOwnerShare)}
+                    </p>
+                  </div>
+                  <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl p-2.5">
+                    <p className="text-[10px] font-semibold text-[#15803D]">
+                      Capster ({selectedCapster.commissionPct}%)
+                    </p>
+                    <p className="text-sm font-bold text-[#15803D] mt-0.5 tabular-nums">
+                      {formatRupiah(selectedCapster.todayCommission)}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCommissionModal({
+                      title: `Capster ${selectedCapster.name}`,
+                      subtitle: `Hari ini · Skema Owner ${selectedCapster.ownerPct}% : Capster ${selectedCapster.commissionPct}%`,
+                      ownerPct: selectedCapster.ownerPct,
+                      commissionPct: selectedCapster.commissionPct,
+                      showCapsterColumn: false,
+                      packageBreakdown: selectedCapster.packageBreakdown ?? [],
+                      haircutHistory: selectedCapster.haircutHistory ?? [],
+                    })
+                  }
+                  className="w-full py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#0F172A] text-xs font-semibold text-[#0F172A] flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Scissors className="w-3.5 h-3.5 text-[#15803D]" />
+                  Lihat List Paket &amp; Komisi ({selectedCapster.todayServices} cukur)
+                </button>
               </div>
 
-              <div className="space-y-2.5 text-xs pt-1">
+              <div className="space-y-2 text-xs pt-0.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[#64748B]">No. telepon</span>
                   <span className="font-semibold text-[#0F172A]">{selectedCapster.phone}</span>
@@ -719,7 +857,7 @@ export function CapsterClient({
               </div>
             </div>
 
-            <div className="space-y-2 pt-5">
+            <div className="space-y-2 pt-4">
               <button
                 type="button"
                 onClick={() => {
@@ -739,7 +877,7 @@ export function CapsterClient({
                   className="w-full py-2.5 rounded-xl border border-[#E5E7EB] hover:bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Pencil className="w-3.5 h-3.5" />
-                  Edit capster &amp; komisi
+                  Edit capster &amp; bagi hasil
                 </button>
               )}
             </div>
@@ -1016,6 +1154,20 @@ export function CapsterClient({
             </button>
           </div>
         </div>
+      )}
+
+      {commissionModal && (
+        <CapsterCommissionModal
+          title={commissionModal.title}
+          subtitle={commissionModal.subtitle}
+          ownerPct={commissionModal.ownerPct}
+          commissionPct={commissionModal.commissionPct}
+          showCapsterColumn={commissionModal.showCapsterColumn}
+          packageBreakdown={commissionModal.packageBreakdown}
+          haircutHistory={commissionModal.haircutHistory}
+          fullExportPayload={commissionModal.fullExportPayload}
+          onClose={() => setCommissionModal(null)}
+        />
       )}
     </>
   );

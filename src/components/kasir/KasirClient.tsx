@@ -5,6 +5,7 @@ import {
   Search,
   Scissors,
   CupSoda,
+  UtensilsCrossed,
   Trash2,
   User,
   Percent,
@@ -94,6 +95,8 @@ export interface PosStoreSetting extends ReceiptStoreInfo {
   qrisEnabled: boolean;
   debitEnabled: boolean;
   qrisMerchantName: string;
+  qrisNmid?: string;
+  qrisImageUrl?: string;
 }
 
 interface PackageCartEntry {
@@ -177,6 +180,9 @@ export function KasirClient({
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [startingQueue, setStartingQueue] = useState(false);
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
+  const [kafeCategoryFilter, setKafeCategoryFilter] = useState<"ALL" | "Minuman" | "Makanan">(
+    "ALL"
+  );
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -194,11 +200,14 @@ export function KasirClient({
 
   const filteredDrinks = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return drinks;
-    return drinks.filter(
-      (d) => d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)
-    );
-  }, [drinks, search]);
+    return drinks.filter((d) => {
+      if (kafeCategoryFilter !== "ALL" && d.category !== kafeCategoryFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
+    });
+  }, [drinks, search, kafeCategoryFilter]);
 
   const selectedCapster = useMemo(
     () => capsters.find((c) => c.id === selectedCapsterId) ?? null,
@@ -231,7 +240,7 @@ export function KasirClient({
 
   const updateDrinkQty = (drink: PosDrink, delta: number) => {
     if (delta > 0 && drink.stock <= getDrinkQty(drink.id)) {
-      showToast(`Stok ${drink.name} tersisa ${drink.stock} botol`);
+      showToast(`Stok ${drink.name} tersisa ${drink.stock}`);
       return;
     }
     setDrinkCart((prev) => {
@@ -673,11 +682,42 @@ export function KasirClient({
           </div>
         </div>
 
-        {/* Section 2: Produk Showcase (Minuman) */}
+        {/* Section 2: Menu Kafe (Minuman & Makanan) */}
         <div className="mt-6">
-          <div className="inline-flex items-center gap-1.5 bg-[#EFECE6] text-[#0F172A] px-3 py-1 rounded-full text-[11px] font-semibold">
-            <CupSoda className="w-3.5 h-3.5" />
-            <span>Produk Showcase</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-1.5 bg-[#EFECE6] text-[#0F172A] px-3 py-1 rounded-full text-[11px] font-semibold">
+              <CupSoda className="w-3.5 h-3.5" />
+              <span>Menu Kafe (Minuman &amp; Makanan)</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {(
+                [
+                  { id: "ALL", label: `Semua (${drinks.length})` },
+                  {
+                    id: "Minuman",
+                    label: `Minuman (${drinks.filter((d) => d.category === "Minuman").length})`,
+                  },
+                  {
+                    id: "Makanan",
+                    label: `Makanan (${drinks.filter((d) => d.category === "Makanan").length})`,
+                  },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setKafeCategoryFilter(tab.id)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-semibold transition cursor-pointer ${
+                    kafeCategoryFilter === tab.id
+                      ? "bg-[#0F172A] text-white"
+                      : "bg-white border border-[#E5E7EB] text-[#64748B] hover:text-[#0F172A]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-3">
@@ -686,6 +726,7 @@ export function KasirClient({
               const isSelected = qty > 0;
               const isOut = drink.stock <= 0;
               const isLow = drink.stock > 0 && drink.stock <= drink.minStock;
+              const isFood = drink.category === "Makanan";
 
               return (
                 <div
@@ -702,8 +743,8 @@ export function KasirClient({
                   }`}
                 >
                   <div
-                    className="relative w-full h-24 rounded-xl flex items-center justify-center overflow-hidden"
-                    style={{ backgroundColor: drink.badgeColor || "#EDE0CE" }}
+                    className="relative w-full h-24 rounded-xl flex items-center justify-center overflow-hidden px-2 text-center"
+                    style={{ backgroundColor: drink.badgeColor || (isFood ? "#F5E6CC" : "#EDE0CE") }}
                   >
                     {drink.imageUrl ? (
                       <img
@@ -713,12 +754,20 @@ export function KasirClient({
                       />
                     ) : (
                       <div className="flex flex-col items-center gap-1 text-[#574F43]">
-                        <CupSoda className="w-6 h-6 opacity-80" />
-                        <span className="text-[11px] font-bold tracking-wider uppercase">
+                        {isFood ? (
+                          <UtensilsCrossed className="w-6 h-6 opacity-80" />
+                        ) : (
+                          <CupSoda className="w-6 h-6 opacity-80" />
+                        )}
+                        <span className="text-[11px] font-bold tracking-wider uppercase line-clamp-2">
                           {drink.name}
                         </span>
                       </div>
                     )}
+
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-white/85 text-[#3F3A32] text-[9px] font-semibold">
+                      {drink.category}
+                    </span>
 
                     {isOut ? (
                       <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-[#DC2626] text-white text-[10px] font-semibold">
@@ -1614,6 +1663,8 @@ export function KasirClient({
           qrisEnabled={setting.qrisEnabled}
           debitEnabled={setting.debitEnabled}
           qrisMerchantName={setting.qrisMerchantName}
+          qrisNmid={setting.qrisNmid}
+          qrisImageUrl={setting.qrisImageUrl}
           storeInfo={setting}
           onConfirmPayment={handleConfirmPayment}
           onStartNewTransaction={handleStartNewTransaction}

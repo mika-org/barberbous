@@ -105,10 +105,18 @@ export async function POST(req: NextRequest) {
         : [{ itemType: "PACKAGE" as const, packageId: parsed.data.packageId!, quantity: 1 }];
 
     const packageIds = Array.from(
-      new Set(requestedItems.filter((i) => i.itemType !== "DRINK" && i.packageId).map((i) => i.packageId!))
+      new Set(
+        requestedItems
+          .filter((i) => i.itemType !== "DRINK" && i.packageId)
+          .map((i) => i.packageId!)
+      )
     );
     const drinkIds = Array.from(
-      new Set(requestedItems.filter((i) => i.itemType === "DRINK" && i.drinkId).map((i) => i.drinkId!))
+      new Set(
+        requestedItems
+          .filter((i) => i.itemType === "DRINK" && i.drinkId)
+          .map((i) => i.drinkId!)
+      )
     );
 
     const [packages, drinks, capster, member, setting, maxOrder] = await Promise.all([
@@ -131,7 +139,7 @@ export async function POST(req: NextRequest) {
     const pkgById = new Map(packages.map((p) => [p.id, p]));
     const drinkById = new Map(drinks.map((d) => [d.id, d]));
 
-    const resolvedItems: Array<{
+    const draftItems: Array<{
       itemType: ItemType;
       packageId: string | null;
       drinkId: string | null;
@@ -150,11 +158,11 @@ export async function POST(req: NextRequest) {
         }
         if (drink.stock < item.quantity) {
           return NextResponse.json(
-            { error: `Stok ${drink.name} tersisa ${drink.stock} botol` },
+            { error: `Stok ${drink.name} tersisa ${drink.stock}` },
             { status: 400 }
           );
         }
-        resolvedItems.push({
+        draftItems.push({
           itemType: ItemType.DRINK,
           packageId: null,
           drinkId: drink.id,
@@ -169,7 +177,7 @@ export async function POST(req: NextRequest) {
         if (!pkg) {
           return NextResponse.json({ error: "Salah satu paket tidak ditemukan" }, { status: 404 });
         }
-        resolvedItems.push({
+        draftItems.push({
           itemType: ItemType.PACKAGE,
           packageId: pkg.id,
           drinkId: null,
@@ -182,9 +190,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const firstPackageItem = resolvedItems.find((i) => i.itemType === ItemType.PACKAGE);
-    const primaryItem = firstPackageItem ?? resolvedItems[0];
-    const totalItemLines = resolvedItems.length;
+    const firstPackageItem = draftItems.find((i) => i.itemType === ItemType.PACKAGE);
+    const primaryItem = firstPackageItem ?? draftItems[0];
+    const totalItemLines = draftItems.length;
     const summaryPkgName =
       totalItemLines === 1
         ? primaryItem.quantity > 1
@@ -194,9 +202,9 @@ export async function POST(req: NextRequest) {
     const summaryPkgDesc =
       totalItemLines === 1
         ? primaryItem.packageDescription
-        : resolvedItems.map((i) => `${i.quantity}× ${i.packageName}`).join(", ");
+        : draftItems.map((i) => `${i.quantity}× ${i.packageName}`).join(", ");
 
-    const subtotal = resolvedItems.reduce((sum, i) => sum + i.lineTotal, 0);
+    const subtotal = draftItems.reduce((sum, i) => sum + i.lineTotal, 0);
     let discountAmount = 0;
     if (parsed.data.discountType === "PERCENT" && parsed.data.discountValue > 0) {
       discountAmount = Math.round((subtotal * Math.min(100, parsed.data.discountValue)) / 100);
@@ -206,7 +214,6 @@ export async function POST(req: NextRequest) {
 
     const afterPromoDiscount = Math.max(0, subtotal - discountAmount);
 
-    // Redeem member loyalty points (1 poin = Rp10)
     let redeemedPoints = 0;
     let pointsDiscount = 0;
     if (parsed.data.redeemedPoints > 0 && member && member.isActive) {
@@ -228,6 +235,47 @@ export async function POST(req: NextRequest) {
         : 0;
     const serviceFeeAmount = setting?.serviceFeeEnabled ? setting.serviceFeeAmount : 0;
     const total = afterAllDiscounts + taxAmount + serviceFeeAmount;
+
+    // Directly calculate & persist per-haircut commission split (default Owner 60% : Capster 40%)
+    const capPct = capster?.commissionPct ?? 40;
+    const ownPct = 100 - capPct;
+    const capNameForLine = capster?.name ?? (firstPackageItem ? "Siapa saja" : null);
+
+    let capsterCommissionTotal = 0;
+    let ownerPackageShareTotal = 0;
+
+    const resolvedItems = draftItems.map((item) => {
+      if (item.itemType === ItemType.PACKAGE) {
+        const netPackageAmount =
+          subtotal > 0
+            ? Math.round((item.lineTotal / subtotal) * afterAllDiscounts)
+            : item.lineTotal;
+        const capsterCommission = Math.round((netPackageAmount * capPct) / 100);
+        const ownerShare = Math.max(0, netPackageAmount - capsterCommission);
+        capsterCommissionTotal += capsterCommission;
+        ownerPackageShareTotal += ownerShare;
+        return {
+          ...item,
+          capsterId: capster?.id ?? null,
+          capsterName: capNameForLine,
+          netPackageAmount,
+          commissionPct: capPct,
+          ownerPct: ownPct,
+          capsterCommission,
+          ownerShare,
+        };
+      }
+      return {
+        ...item,
+        capsterId: null,
+        capsterName: null,
+        netPackageAmount: 0,
+        commissionPct: 0,
+        ownerPct: 100,
+        capsterCommission: 0,
+        ownerShare: 0,
+      };
+    });
 
     let cashReceived: number | null = null;
     let changeAmount: number | null = null;
@@ -283,6 +331,8 @@ export async function POST(req: NextRequest) {
           taxAmount,
           serviceFeeAmount,
           total,
+          capsterCommissionTotal,
+          ownerPackageShareTotal,
           paymentMethod: parsed.data.paymentMethod,
           cashReceived,
           changeAmount,

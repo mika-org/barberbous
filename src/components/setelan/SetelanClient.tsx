@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Printer, Download, Plus, Trash2, Lock, Ticket } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Printer, Download, Plus, Trash2, Lock, Ticket, Upload, RotateCcw, QrCode } from "lucide-react";
 import { formatRupiah } from "@/lib/format";
 
 export interface StoreSettingModel {
@@ -24,6 +24,8 @@ export interface StoreSettingModel {
   qrisEnabled: boolean;
   debitEnabled: boolean;
   qrisMerchantName: string;
+  qrisNmid?: string;
+  qrisImageUrl?: string;
 }
 
 export interface StaffUserModel {
@@ -91,7 +93,22 @@ export function SetelanClient({
   const [staff, setStaff] = useState<StaffUserModel[]>(initialStaff);
   const [vouchers, setVouchers] = useState<VoucherModel[]>(initialVouchers);
   const [saving, setSaving] = useState(false);
+  const [confirmResetTx, setConfirmResetTx] = useState(false);
+  const [resettingTx, setResettingTx] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const qrisFileRef = useRef<HTMLInputElement>(null);
+
+  const handleQrisImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setSetting((s) => ({ ...s, qrisImageUrl: reader.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Add voucher form
   const [newVoucherCode, setNewVoucherCode] = useState("");
@@ -136,6 +153,8 @@ export function SetelanClient({
           qrisEnabled: setting.qrisEnabled,
           debitEnabled: setting.debitEnabled,
           qrisMerchantName: setting.qrisMerchantName,
+          qrisNmid: setting.qrisNmid || "ID1026609626373",
+          qrisImageUrl: setting.qrisImageUrl || "/images/qris.jpeg",
         }),
       });
       const json = await res.json();
@@ -584,17 +603,92 @@ export function SetelanClient({
                 />
               </div>
 
-              <div className="border-t border-[#F1F5F9] pt-4">
-                <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                  Nama merchant QRIS
-                </label>
-                <input
-                  value={setting.qrisMerchantName}
-                  onChange={(e) =>
-                    setSetting((s) => ({ ...s, qrisMerchantName: e.target.value }))
-                  }
-                  className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-                />
+              <div className="border-t border-[#F1F5F9] pt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                      Nama merchant QRIS
+                    </label>
+                    <input
+                      value={setting.qrisMerchantName}
+                      onChange={(e) =>
+                        setSetting((s) => ({ ...s, qrisMerchantName: e.target.value }))
+                      }
+                      placeholder="Barberbous, Service"
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+                      NMID QRIS Resmi
+                    </label>
+                    <input
+                      value={setting.qrisNmid ?? "ID1026609626373"}
+                      onChange={(e) =>
+                        setSetting((s) => ({ ...s, qrisNmid: e.target.value }))
+                      }
+                      placeholder="ID1026609626373"
+                      className="w-full border border-[#E5E7EB] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-[#F8FAFC] border border-[#E5E7EB] rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-36 shrink-0 bg-white border border-[#E5E7EB] rounded-xl p-2 shadow-xs">
+                    <img
+                      src={setting.qrisImageUrl || "/images/qris.jpeg"}
+                      alt="Pratinjau QRIS Toko"
+                      className="w-full h-auto rounded-lg object-contain"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2.5 text-xs">
+                    <div className="flex items-center gap-1.5 font-bold text-[#0F172A]">
+                      <QrCode className="w-4 h-4 text-[#15803D]" />
+                      <span>Gambar Stand QRIS Statis Kasir</span>
+                    </div>
+                    <p className="text-[11px] text-[#64748B] leading-relaxed">
+                      Ditampilkan otomatis saat kasir memilih metode pembayaran{" "}
+                      <strong className="text-[#0F172A]">QRIS</strong>. Karena menggunakan QRIS
+                      Statis toko, pelanggan melakukan scan lalu memasukkan nominal sesuai tagihan,
+                      kemudian kasir memverifikasi mutasi sebelum menekan{" "}
+                      <strong className="text-[#0F172A]">Dana sudah masuk</strong>.
+                    </p>
+                    <input
+                      ref={qrisFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleQrisImageUpload}
+                    />
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => qrisFileRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#0F172A] text-xs font-semibold text-[#0F172A] cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        Ganti gambar QRIS
+                      </button>
+                      {setting.qrisImageUrl && setting.qrisImageUrl !== "/images/qris.jpeg" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSetting((s) => ({
+                              ...s,
+                              qrisImageUrl: "/images/qris.jpeg",
+                              qrisMerchantName: "Barberbous, Service",
+                              qrisNmid: "ID1026609626373",
+                            }))
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E5E7EB] hover:bg-white text-xs font-medium text-[#64748B] cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Gunakan QRIS bawaan
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -882,6 +976,65 @@ export function SetelanClient({
                 Ekspor JSON
               </a>
             </div>
+
+            {isManager && (
+              <div className="bg-white border border-[#FEE2E2] rounded-2xl p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-[#DC2626]">
+                      Bersihkan Tabel Transaksi &amp; Operasional
+                    </p>
+                    <p className="text-xs text-[#64748B] mt-0.5">
+                      Menghapus seluruh transaksi, antrean cukur, booking, shift, dan pengeluaran
+                      agar siap mulai dari #0001 (paket, minuman, capster, &amp; akun staf tetap aman)
+                    </p>
+                  </div>
+                  {!confirmResetTx ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmResetTx(true)}
+                      className="border border-[#FECACA] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center gap-2 cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Kosongkan Transaksi
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmResetTx(false)}
+                        className="border border-[#E5E7EB] bg-white rounded-xl px-3 py-2 text-xs font-semibold text-[#64748B] cursor-pointer"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="button"
+                        disabled={resettingTx}
+                        onClick={async () => {
+                          setResettingTx(true);
+                          try {
+                            const res = await fetch("/api/backup/reset", { method: "POST" });
+                            const json = await res.json();
+                            if (!res.ok) throw new Error(json.error);
+                            setConfirmResetTx(false);
+                            showToast("Data transaksi berhasil dikosongkan (#0001 siap)");
+                          } catch (err: unknown) {
+                            showToast(
+                              err instanceof Error ? err.message : "Gagal mengosongkan transaksi"
+                            );
+                          } finally {
+                            setResettingTx(false);
+                          }
+                        }}
+                        className="bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xl px-3.5 py-2 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                      >
+                        {resettingTx ? "Menghapus..." : "Ya, Hapus Semua Transaksi"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

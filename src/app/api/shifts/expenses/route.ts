@@ -15,14 +15,31 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await getCurrentUser();
-    const created = await prisma.cashExpense.create({
-      data: {
-        shiftId: parsed.data.shiftId,
-        amount: parsed.data.amount,
-        description: parsed.data.description,
-        category: parsed.data.category ?? "Operasional",
-        createdBy: user?.name ?? "Kasir",
-      },
+    const actorName = user?.name ?? "Kasir";
+
+    const created = await prisma.$transaction(async (tx) => {
+      const shiftExp = await tx.cashExpense.create({
+        data: {
+          shiftId: parsed.data.shiftId,
+          amount: parsed.data.amount,
+          description: parsed.data.description,
+          category: parsed.data.category ?? "Operasional",
+          createdBy: actorName,
+        },
+      });
+
+      await tx.storeExpense.create({
+        data: {
+          amount: parsed.data.amount,
+          description: parsed.data.description,
+          category: "Operasional",
+          paymentMethod: "TUNAI",
+          shiftExpenseId: shiftExp.id,
+          createdBy: actorName,
+        },
+      });
+
+      return shiftExp;
     });
 
     return NextResponse.json({ data: created }, { status: 201 });

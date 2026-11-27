@@ -9,6 +9,7 @@ import {
   Package,
   Users,
   Scissors,
+  TrendingDown,
   BarChart2,
   SlidersHorizontal,
   User,
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/produk", label: "Produk", icon: Package },
   { href: "/member", label: "Member", icon: Users },
   { href: "/capster", label: "Capster", icon: Scissors },
+  { href: "/pengeluaran", label: "Biaya", icon: TrendingDown },
   { href: "/laporan", label: "Laporan", icon: BarChart2 },
   { href: "/setelan", label: "Setelan", icon: SlidersHorizontal },
 ] as const;
@@ -127,7 +129,7 @@ export function AppShell({
             <BarberbousLogo className="w-11 h-11" />
           </Link>
 
-          <nav className="flex flex-col items-center gap-1.5 w-full px-2">
+          <nav className="flex flex-col items-center gap-1 w-full px-1.5">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive =
@@ -138,13 +140,13 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   prefetch={false}
-                  className={`w-full py-2.5 px-1 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ${
+                  className={`w-full py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
                     isActive
                       ? "bg-[#0F172A] text-white shadow-xs"
                       : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]"
                   }`}
                 >
-                  <Icon className="w-[18px] h-[18px]" strokeWidth={1.85} />
+                  <Icon className="w-[17px] h-[17px]" strokeWidth={1.85} />
                   <span>{item.label}</span>
                 </Link>
               );

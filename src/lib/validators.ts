@@ -12,8 +12,8 @@ export const packageCreateSchema = z.object({
 export const packageUpdateSchema = packageCreateSchema.partial();
 
 export const drinkCreateSchema = z.object({
-  name: z.string().trim().min(1, "Nama minuman wajib diisi").max(60),
-  category: z.string().trim().min(1).max(60).optional().default("Minuman kemasan"),
+  name: z.string().trim().min(1, "Nama menu kafe wajib diisi").max(60),
+  category: z.string().trim().min(1).max(60).optional().default("Minuman"),
   price: z.coerce.number().int().min(0, "Harga tidak boleh negatif"),
   stock: z.coerce.number().int().min(0, "Stok tidak boleh negatif").default(0),
   minStock: z.coerce.number().int().min(0, "Batas minimum tidak boleh negatif").default(6),
@@ -25,8 +25,8 @@ export const drinkCreateSchema = z.object({
 export const drinkUpdateSchema = drinkCreateSchema.partial();
 
 export const drinkRestockSchema = z.object({
-  delta: z.coerce.number().int().min(1, "Jumlah restock minimal 1 botol").max(1000),
-  note: z.string().trim().max(120).optional().default("Restock kulkas"),
+  delta: z.coerce.number().int().min(1, "Jumlah restock minimal 1 item").max(1000),
+  note: z.string().trim().max(120).optional().default("Restock stok kafe"),
 });
 
 export const capsterCreateSchema = z.object({
@@ -118,6 +118,17 @@ export const cashExpenseCreateSchema = z.object({
   category: z.string().trim().max(40).optional().default("Operasional"),
 });
 
+export const storeExpenseCreateSchema = z.object({
+  amount: z.coerce.number().int().min(100, "Nominal pengeluaran minimal Rp100"),
+  description: z.string().trim().min(1, "Nama / keterangan pengeluaran wajib diisi").max(140),
+  category: z
+    .enum(["Operasional", "Bahan Barber", "Stok Minuman", "Utilitas & Sewa", "Lainnya"])
+    .default("Operasional"),
+  paymentMethod: z.enum(["TUNAI", "QRIS", "DEBIT"]).default("TUNAI"),
+  expenseDate: z.string().trim().optional(),
+  notes: z.string().trim().max(300).optional().nullable(),
+});
+
 export const voucherApplySchema = z.object({
   code: z.string().trim().min(1, "Masukkan kode voucher").max(30),
   subtotal: z.coerce.number().int().min(0),
@@ -190,6 +201,8 @@ export const storeSettingUpdateSchema = z.object({
   qrisEnabled: z.boolean().optional(),
   debitEnabled: z.boolean().optional(),
   qrisMerchantName: z.string().trim().max(80).optional(),
+  qrisNmid: z.string().trim().max(40).optional(),
+  qrisImageUrl: z.string().trim().optional(),
 });
 
 export const loginSchema = z.object({

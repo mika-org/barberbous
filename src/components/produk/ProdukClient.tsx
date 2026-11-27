@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Plus, Box, CupSoda, X, Trash2, PackagePlus, Lock } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Box,
+  CupSoda,
+  UtensilsCrossed,
+  X,
+  Trash2,
+  PackagePlus,
+  Lock,
+} from "lucide-react";
 import { formatDateShort, formatRupiah, formatTimeHHMM, getInitials } from "@/lib/format";
 
 export interface ProductPackage {
@@ -56,6 +66,7 @@ export function ProdukClient({
 
   const [packages, setPackages] = useState<ProductPackage[]>(initialPackages);
   const [drinks, setDrinks] = useState<ProductDrink[]>(initialDrinks);
+  const [kafeFilter, setKafeFilter] = useState<"ALL" | "Minuman" | "Makanan">("ALL");
   const [search, setSearch] = useState("");
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -69,12 +80,12 @@ export function ProdukClient({
 
   // Form states
   const [nameInput, setNameInput] = useState(initialDrinks[0]?.name ?? "");
-  const [descInput, setDescInput] = useState(initialDrinks[0]?.category ?? "Minuman kemasan");
+  const [descInput, setDescInput] = useState(initialDrinks[0]?.category ?? "Minuman");
   const [priceInput, setPriceInput] = useState(
     initialDrinks[0] ? String(initialDrinks[0].price) : "5000"
   );
   const [stockInput, setStockInput] = useState(
-    initialDrinks[0] ? String(initialDrinks[0].stock) : "24"
+    initialDrinks[0] ? String(initialDrinks[0].stock) : "50"
   );
   const [minStockInput, setMinStockInput] = useState(
     initialDrinks[0] ? String(initialDrinks[0].minStock) : "6"
@@ -92,7 +103,7 @@ export function ProdukClient({
 
   // Quick Restock & Stock Logs states
   const [restockDelta, setRestockDelta] = useState("12");
-  const [restockNote, setRestockNote] = useState("Isi ulang kulkas");
+  const [restockNote, setRestockNote] = useState("Restock stok kafe");
   const [restocking, setRestocking] = useState(false);
   const [stockLogState, setStockLogState] = useState<{
     drinkId: string | null;
@@ -157,14 +168,14 @@ export function ProdukClient({
     setErrorMsg(null);
   };
 
-  const openNewDrink = () => {
+  const openNewDrink = (defaultCategory: "Minuman" | "Makanan" = "Minuman") => {
     setShowAddMenu(false);
     setDrawer({ kind: "new-drink" });
     setMobileDrawerOpen(true);
     setNameInput("");
-    setDescInput("Minuman kemasan");
-    setPriceInput("5000");
-    setStockInput("20");
+    setDescInput(defaultCategory);
+    setPriceInput(defaultCategory === "Makanan" ? "10000" : "5000");
+    setStockInput("50");
     setMinStockInput("6");
     setImageInput(null);
     setActiveInput(true);
@@ -181,7 +192,7 @@ export function ProdukClient({
       const res = await fetch(`/api/drinks/${drinkId}/restock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ delta, note: note || "Restock kulkas" }),
+        body: JSON.stringify({ delta, note: note || "Restock stok kafe" }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -196,7 +207,7 @@ export function ProdukClient({
           }));
         }
       }
-      setFeedback(`Stok bertambah +${delta} botol (total ${json.data.stock} botol)`);
+      setFeedback(`Stok bertambah +${delta} (total ${json.data.stock} stok)`);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Gagal menambah stok");
     } finally {
@@ -225,7 +236,7 @@ export function ProdukClient({
 
   const handleToggleDrink = async (drink: ProductDrink) => {
     if (!isManager) {
-      setErrorMsg("Hanya Owner/Admin yang dapat menonaktifkan minuman");
+      setErrorMsg("Hanya Owner/Admin yang dapat menonaktifkan menu kafe");
       return;
     }
     const res = await fetch(`/api/drinks/${drink.id}`, {
@@ -311,7 +322,7 @@ export function ProdukClient({
         if (!res.ok) throw new Error(json.error);
         setDrinks((prev) => prev.map((d) => (d.id === json.data.id ? json.data : d)));
         setDrawer({ kind: "edit-drink", item: json.data });
-        setFeedback("Minuman berhasil diperbarui");
+        setFeedback("Produk kafe berhasil diperbarui");
       } else if (drawer.kind === "new-drink") {
         const res = await fetch("/api/drinks", {
           method: "POST",
@@ -330,7 +341,7 @@ export function ProdukClient({
         if (!res.ok) throw new Error(json.error);
         setDrinks((prev) => [...prev, json.data]);
         setDrawer({ kind: "edit-drink", item: json.data });
-        setFeedback("Minuman baru ditambahkan");
+        setFeedback("Produk kafe baru ditambahkan");
       }
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Gagal menyimpan data");
@@ -389,12 +400,21 @@ export function ProdukClient({
 
   const filteredDrinks = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q
-      ? drinks.filter(
-          (d) => d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)
-        )
-      : drinks;
-  }, [drinks, search]);
+    return drinks.filter((d) => {
+      if (kafeFilter !== "ALL" && d.category !== kafeFilter) return false;
+      if (!q) return true;
+      return d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
+    });
+  }, [drinks, search, kafeFilter]);
+
+  const minumanCount = useMemo(
+    () => drinks.filter((d) => d.category === "Minuman").length,
+    [drinks]
+  );
+  const makananCount = useMemo(
+    () => drinks.filter((d) => d.category === "Makanan").length,
+    [drinks]
+  );
 
   const isDrinkDrawer = drawer?.kind === "edit-drink" || drawer?.kind === "new-drink";
 
@@ -404,9 +424,9 @@ export function ProdukClient({
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
           <div>
-            <h1 className="text-xl font-bold text-[#0F172A]">Produk</h1>
+            <h1 className="text-xl font-bold text-[#0F172A]">Produk Barber &amp; Kafe</h1>
             <p className="text-xs text-[#64748B] mt-0.5">
-              {packages.length} paket · {drinks.length} minuman
+              {packages.length} paket barber · {minumanCount} minuman · {makananCount} makanan
             </p>
           </div>
 
@@ -417,7 +437,7 @@ export function ProdukClient({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari paket atau minuman"
+                placeholder="Cari paket, minuman, makanan"
                 className="w-full bg-white border border-[#E5E7EB] rounded-xl pl-8 pr-3 py-2 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A]"
               />
             </div>
@@ -433,20 +453,27 @@ export function ProdukClient({
                   Tambah baru
                 </button>
                 {showAddMenu && (
-                  <div className="absolute right-0 mt-2 w-44 bg-white border border-[#E5E7EB] rounded-xl shadow-lg py-1 z-20 text-xs">
+                  <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E5E7EB] rounded-xl shadow-lg py-1 z-20 text-xs">
                     <button
                       type="button"
                       onClick={openNewPackage}
                       className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] text-[#0F172A] font-medium cursor-pointer"
                     >
-                      + Tambah paket
+                      + Tambah paket barber
                     </button>
                     <button
                       type="button"
-                      onClick={openNewDrink}
+                      onClick={() => openNewDrink("Minuman")}
                       className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] text-[#0F172A] font-medium cursor-pointer"
                     >
-                      + Tambah minuman
+                      + Tambah minuman kafe
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openNewDrink("Makanan")}
+                      className="w-full text-left px-3.5 py-2 hover:bg-[#F8FAFC] text-[#0F172A] font-medium cursor-pointer"
+                    >
+                      + Tambah makanan kafe
                     </button>
                   </div>
                 )}
@@ -455,11 +482,11 @@ export function ProdukClient({
           </div>
         </div>
 
-        {/* Section 1: Paket */}
+        {/* Section 1: Paket Barber */}
         <div className="mt-5">
           <div className="inline-flex items-center gap-1.5 bg-white border border-[#E5E7EB] rounded-full px-3 py-1 text-[11px] font-medium text-[#0F172A]">
             <Box className="w-3 h-3" />
-            Paket
+            Unit Barber — Paket Cukur
           </div>
 
           <div className="mt-2.5 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
@@ -538,20 +565,46 @@ export function ProdukClient({
           </div>
         </div>
 
-        {/* Section 2: Minuman Kemasan */}
+        {/* Section 2: Unit Kafe — Minuman & Makanan */}
         <div className="mt-6">
-          <div className="inline-flex items-center gap-1.5 bg-white border border-[#E5E7EB] rounded-full px-3 py-1 text-[11px] font-medium text-[#0F172A]">
-            <CupSoda className="w-3 h-3" />
-            Minuman Kemasan
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-1.5 bg-white border border-[#E5E7EB] rounded-full px-3 py-1 text-[11px] font-medium text-[#0F172A]">
+              <CupSoda className="w-3 h-3" />
+              Unit Kafe — Minuman &amp; Makanan ({drinks.length})
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {(
+                [
+                  { id: "ALL", label: `Semua (${drinks.length})` },
+                  { id: "Minuman", label: `Minuman (${minumanCount})` },
+                  { id: "Makanan", label: `Makanan (${makananCount})` },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setKafeFilter(item.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer ${
+                    kafeFilter === item.id
+                      ? "bg-[#0F172A] text-white"
+                      : "bg-white border border-[#E5E7EB] text-[#475569] hover:bg-[#F8FAFC]"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="mt-2.5 bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
-            <table className="w-full min-w-[580px] text-left border-collapse">
+            <table className="w-full min-w-[620px] text-left border-collapse">
               <thead>
                 <tr className="bg-[#FAFAFA] border-b border-[#E5E7EB] text-[11px] font-medium text-[#64748B]">
-                  <th className="py-3 px-4">Minuman</th>
+                  <th className="py-3 px-4">Produk Kafe</th>
+                  <th className="py-3 px-4">Kategori</th>
                   <th className="py-3 px-4 text-right">Harga</th>
-                  <th className="py-3 px-4 text-right">Stok (kulkas)</th>
+                  <th className="py-3 px-4 text-right">Stok</th>
                   <th className="py-3 px-4 text-right">Isi Cepat</th>
                   <th className="py-3 px-4 text-right">Aktif</th>
                 </tr>
@@ -562,6 +615,7 @@ export function ProdukClient({
                     drawer?.kind === "edit-drink" && drawer.item.id === drink.id;
                   const isOut = drink.stock <= 0;
                   const isLow = drink.stock > 0 && drink.stock <= drink.minStock;
+                  const isFood = drink.category === "Makanan";
                   return (
                     <tr
                       key={drink.id}
@@ -574,7 +628,10 @@ export function ProdukClient({
                         <div className="flex items-center gap-3">
                           <div
                             className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-[#3F3A32] shrink-0 overflow-hidden"
-                            style={{ backgroundColor: drink.badgeColor || "#EDE0CE" }}
+                            style={{
+                              backgroundColor:
+                                drink.badgeColor || (isFood ? "#F5E6CC" : "#EDE0CE"),
+                            }}
                           >
                             {drink.imageUrl ? (
                               <img
@@ -582,12 +639,25 @@ export function ProdukClient({
                                 alt={drink.name}
                                 className="w-full h-full object-cover"
                               />
+                            ) : isFood ? (
+                              <UtensilsCrossed className="w-4 h-4 text-[#574F43]" />
                             ) : (
                               drink.name.slice(0, 1).toUpperCase()
                             )}
                           </div>
                           <span className="font-semibold text-[#0F172A]">{drink.name}</span>
                         </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
+                            isFood
+                              ? "bg-[#FEF3C7] text-[#B45309]"
+                              : "bg-[#F1F5F9] text-[#475569]"
+                          }`}
+                        >
+                          {drink.category}
+                        </span>
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] tabular-nums">
                         {formatRupiah(drink.price)}
@@ -615,8 +685,8 @@ export function ProdukClient({
                             {isOut
                               ? "0 · habis"
                               : isLow
-                                ? `${drink.stock} botol · menipis`
-                                : `${drink.stock} botol`}
+                                ? `${drink.stock} stok · menipis`
+                                : `${drink.stock} stok`}
                           </span>
                         </span>
                       </td>
@@ -627,11 +697,13 @@ export function ProdukClient({
                         <button
                           type="button"
                           disabled={restocking}
-                          onClick={() => handleQuickRestock(drink.id, 12, "Quick restock +12 botol")}
+                          onClick={() =>
+                            handleQuickRestock(drink.id, 12, `Quick restock +12 (${drink.name})`)
+                          }
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] text-[11px] font-semibold transition cursor-pointer"
                         >
                           <PackagePlus className="w-3 h-3" />
-                          +12 botol
+                          +12 stok
                         </button>
                       </td>
                       <td
@@ -641,7 +713,7 @@ export function ProdukClient({
                         <button
                           type="button"
                           disabled={!isManager}
-                          aria-label={`Aktifkan minuman ${drink.name}`}
+                          aria-label={`Aktifkan produk ${drink.name}`}
                           onClick={() => handleToggleDrink(drink)}
                           className={`inline-flex items-center w-9 h-5 rounded-full p-0.5 transition ${
                             !isManager ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
@@ -681,12 +753,12 @@ export function ProdukClient({
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-[#0F172A]">
               {drawer.kind === "edit-package"
-                ? "Detail & edit paket"
+                ? "Detail & edit paket barber"
                 : drawer.kind === "new-package"
-                  ? "Tambah paket"
+                  ? "Tambah paket barber"
                   : drawer.kind === "edit-drink"
-                    ? "Edit & stok minuman"
-                    : "Tambah minuman"}
+                    ? "Edit & stok produk kafe"
+                    : "Tambah produk kafe"}
             </h2>
             <button
               type="button"
@@ -712,13 +784,13 @@ export function ProdukClient({
             </p>
           )}
 
-          {/* Quick Restock Card (Available to Kasir & Owner/Admin) */}
+          {/* Quick Restock Card */}
           {drawer.kind === "edit-drink" && (
             <div className="bg-[#F8FAFC] border border-[#E5E7EB] rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
                   <PackagePlus className="w-3.5 h-3.5 text-[#15803D]" />
-                  Isi Stok Cepat ({drawer.item.stock} botol)
+                  Isi Stok Cepat ({drawer.item.stock} stok)
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
@@ -728,11 +800,11 @@ export function ProdukClient({
                     type="button"
                     disabled={restocking}
                     onClick={() =>
-                      handleQuickRestock(drawer.item.id, qty, `Isi kulkas +${qty} botol`)
+                      handleQuickRestock(drawer.item.id, qty, `Isi stok +${qty}`)
                     }
                     className="py-1.5 rounded-lg bg-white border border-[#E5E7EB] hover:border-[#15803D] hover:text-[#15803D] text-xs font-semibold text-[#0F172A] cursor-pointer"
                   >
-                    +{qty} btl
+                    +{qty} stok
                   </button>
                 ))}
               </div>
@@ -773,7 +845,7 @@ export function ProdukClient({
                       className="flex items-center justify-between text-[11px] text-[#475569]"
                     >
                       <span className="truncate">
-                        +{log.delta} btl ({log.previousStock}→{log.newStock}) · {log.createdBy}
+                        +{log.delta} ({log.previousStock}→{log.newStock}) · {log.createdBy}
                       </span>
                       <span className="text-[10px] text-[#94A3B8] shrink-0">
                         {formatDateShort(log.createdAt)} {formatTimeHHMM(log.createdAt)}
@@ -798,7 +870,7 @@ export function ProdukClient({
                 <img src={imageInput} alt={nameInput} className="w-full h-full object-cover" />
               ) : (
                 <span className="text-lg font-extrabold tracking-widest uppercase text-[#574F43]">
-                  {isDrinkDrawer ? getInitials(nameInput || "MN") : nameInput || "PAKET"}
+                  {isDrinkDrawer ? getInitials(nameInput || "KF") : nameInput || "PAKET"}
                 </span>
               )}
             </div>
@@ -822,7 +894,7 @@ export function ProdukClient({
 
             <div>
               <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                {isDrinkDrawer ? "Nama minuman" : "Nama paket"}
+                {isDrinkDrawer ? "Nama produk kafe" : "Nama paket"}
               </label>
               <input
                 required
@@ -835,15 +907,27 @@ export function ProdukClient({
 
             <div>
               <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                {isDrinkDrawer ? "Kategori" : "Isi paket"}
+                {isDrinkDrawer ? "Kategori Kafe" : "Isi paket"}
               </label>
-              <input
-                required
-                disabled={!isManager}
-                value={descInput}
-                onChange={(e) => setDescInput(e.target.value)}
-                className="w-full border border-[#E5E7EB] disabled:bg-[#F8FAFC] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
-              />
+              {isDrinkDrawer ? (
+                <select
+                  disabled={!isManager}
+                  value={descInput}
+                  onChange={(e) => setDescInput(e.target.value)}
+                  className="w-full border border-[#E5E7EB] disabled:bg-[#F8FAFC] bg-white rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                >
+                  <option value="Minuman">Minuman</option>
+                  <option value="Makanan">Makanan</option>
+                </select>
+              ) : (
+                <input
+                  required
+                  disabled={!isManager}
+                  value={descInput}
+                  onChange={(e) => setDescInput(e.target.value)}
+                  className="w-full border border-[#E5E7EB] disabled:bg-[#F8FAFC] rounded-xl px-3.5 py-2 text-xs font-medium text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                />
+              )}
             </div>
 
             <div>
@@ -864,7 +948,7 @@ export function ProdukClient({
               <>
                 <div>
                   <label className="block text-[11px] font-medium text-[#64748B] mb-1">
-                    Stok kulkas saat ini (botol)
+                    Stok saat ini
                   </label>
                   <input
                     required
@@ -912,7 +996,7 @@ export function ProdukClient({
                     className="w-full py-2.5 rounded-xl border border-[#FEE2E2] hover:bg-[#FEF2F2] text-[#DC2626] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    {drawer.kind === "edit-drink" ? "Hapus minuman" : "Hapus paket"}
+                    {drawer.kind === "edit-drink" ? "Hapus produk kafe" : "Hapus paket"}
                   </button>
                 )}
               </div>
