@@ -10,7 +10,7 @@ async function KasirDataLoader() {
   await connection();
   const user = await getCurrentUser();
   if (!user) {
-    redirect("/login");
+    redirect("/landing");
   }
 
   const [packages, drinks, capsters, members, bookings, activeQueue, activeShift, maxOrder, setting] =

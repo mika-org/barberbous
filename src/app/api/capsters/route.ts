@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [todayTx, activeBookings] = await Promise.all([
+    const [todayTx, activeBookings, todayKasbons] = await Promise.all([
       prisma.transaction.findMany({
         where: { status: "SELESAI", createdAt: { gte: todayStart } },
         include: { items: true },
@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
         where: { status: { in: ["HADIR", "MENUNGGU"] } },
         include: { package: true },
         orderBy: { scheduledTime: "asc" },
+      }),
+      prisma.kasbon.findMany({
+        where: { date: { gte: todayStart } },
       }),
     ]);
 
@@ -42,6 +45,9 @@ export async function GET(req: NextRequest) {
         const pkgItems = t.items?.filter((i) => i.itemType === "PACKAGE") ?? [];
         return s + (pkgItems.length > 0 ? pkgItems.reduce((q, i) => q + i.quantity, 0) : t.packageId ? 1 : 0);
       }, 0);
+
+      const capKasbons = todayKasbons.filter((k) => k.capsterId === c.id);
+      const todayKasbon = capKasbons.reduce((s, k) => s + k.amount, 0);
 
       const pkgCounts: Record<string, number> = {};
       for (const t of capTx) {
@@ -60,6 +66,7 @@ export async function GET(req: NextRequest) {
         ...c,
         todayRevenue: revenue,
         todayServices: servicesCount,
+        todayKasbon,
         sharePct,
         topPackage,
         schedule,

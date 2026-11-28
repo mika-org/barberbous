@@ -14,7 +14,7 @@ import {
   Scissors,
   Download,
 } from "lucide-react";
-import { formatRupiah, getInitials } from "@/lib/format";
+import { formatRupiah, formatTimeHHMM, getInitials } from "@/lib/format";
 import {
   CapsterCommissionModal,
   type PackageCommissionRow,
@@ -51,6 +51,8 @@ export interface CapsterModel {
   todayRevenue: number;
   todayPackageRevenue: number;
   todayCommission: number;
+  todayKasbon?: number;
+  todayNetCommission?: number;
   todayOwnerShare: number;
   todayServices: number;
   sharePct: number;
@@ -58,6 +60,13 @@ export interface CapsterModel {
   schedule: CapsterScheduleItem[];
   packageBreakdown?: PackageCommissionRow[];
   haircutHistory?: HaircutCommissionHistoryItem[];
+  kasbons?: Array<{
+    id: string;
+    amount: number;
+    date: string;
+    notes?: string | null;
+    createdBy?: string;
+  }>;
 }
 
 type PanelMode = "detail" | "create" | "edit";
@@ -75,6 +84,7 @@ export function CapsterClient({
   allCapstersBreakdown?: {
     packageBreakdown: PackageCommissionRow[];
     haircutHistory: HaircutCommissionHistoryItem[];
+    totalKasbon?: number;
   };
   todayFinancialExportPayload?: CapsterFinancialExportPayload;
   storeName?: string;
@@ -104,6 +114,7 @@ export function CapsterClient({
     ownerPct: number;
     commissionPct: number;
     showCapsterColumn: boolean;
+    kasbonTotal?: number;
     packageBreakdown: PackageCommissionRow[];
     haircutHistory: HaircutCommissionHistoryItem[];
     fullExportPayload?: CapsterFinancialExportPayload;
@@ -392,6 +403,7 @@ export function CapsterClient({
                     ownerPct: 60,
                     commissionPct: 40,
                     showCapsterColumn: true,
+                    kasbonTotal: allCapstersBreakdown.totalKasbon ?? 0,
                     packageBreakdown: allCapstersBreakdown.packageBreakdown,
                     haircutHistory: allCapstersBreakdown.haircutHistory,
                     fullExportPayload: todayFinancialExportPayload,
@@ -461,14 +473,16 @@ export function CapsterClient({
                 <th className="py-3 px-4 text-right">Layanan</th>
                 <th className="py-3 px-4 text-right">Omzet Paket</th>
                 <th className="py-3 px-4 text-right">Owner (60%)</th>
-                <th className="py-3 px-4 text-right">Capster (40%)</th>
+                <th className="py-3 px-4 text-right">Komisi (40%)</th>
+                <th className="py-3 px-4 text-right">Kasbon</th>
+                <th className="py-3 px-4 text-right">Bersih Capster</th>
                 <th className="py-3 px-4 text-right">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9] text-xs">
               {filteredCapsters.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-[#94A3B8]">
+                  <td colSpan={8} className="py-10 text-center text-[#94A3B8]">
                     Tidak ada capster dengan filter ini.
                   </td>
                 </tr>
@@ -522,6 +536,17 @@ export function CapsterClient({
                       </td>
                       <td className="py-3.5 px-4 text-right font-semibold text-[#15803D] tabular-nums">
                         {formatRupiah(cap.todayCommission)}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-medium text-[#DC2626] tabular-nums">
+                        {cap.todayKasbon && cap.todayKasbon > 0
+                          ? `-${formatRupiah(cap.todayKasbon)}`
+                          : "Rp 0"}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-bold text-[#15803D] tabular-nums">
+                        {formatRupiah(
+                          cap.todayNetCommission ??
+                            (cap.todayCommission - (cap.todayKasbon ?? 0))
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">{renderStatusPill(cap.status)}</td>
                     </tr>
@@ -811,6 +836,23 @@ export function CapsterClient({
                   </div>
                 </div>
 
+                {(selectedCapster.todayKasbon ?? 0) > 0 && (
+                  <div className="bg-[#FEF2F2] border border-[#FEE2E2] rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <div>
+                      <p className="text-[10px] font-semibold text-[#DC2626]">Potongan Kasbon</p>
+                      <p className="text-sm font-bold text-[#DC2626] mt-0.5 tabular-nums">
+                        -{formatRupiah(selectedCapster.todayKasbon ?? 0)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-semibold text-[#15803D]">Bersih Diterima</p>
+                      <p className="text-sm font-bold text-[#15803D] mt-0.5 tabular-nums">
+                        {formatRupiah((selectedCapster.todayCommission ?? 0) - (selectedCapster.todayKasbon ?? 0))}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() =>
@@ -820,6 +862,7 @@ export function CapsterClient({
                       ownerPct: selectedCapster.ownerPct,
                       commissionPct: selectedCapster.commissionPct,
                       showCapsterColumn: false,
+                      kasbonTotal: selectedCapster.todayKasbon ?? 0,
                       packageBreakdown: selectedCapster.packageBreakdown ?? [],
                       haircutHistory: selectedCapster.haircutHistory ?? [],
                     })
@@ -830,6 +873,32 @@ export function CapsterClient({
                   Lihat List Paket &amp; Komisi ({selectedCapster.todayServices} cukur)
                 </button>
               </div>
+
+              {selectedCapster.kasbons && selectedCapster.kasbons.length > 0 && (
+                <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-[#92400E]">Kasbon Capster Hari Ini</p>
+                    <span className="text-[11px] font-bold text-[#DC2626]">
+                      Total -{formatRupiah(selectedCapster.todayKasbon ?? 0)}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {selectedCapster.kasbons.map((k) => (
+                      <div
+                        key={k.id}
+                        className="bg-white/80 rounded-xl p-2 border border-[#FDE68A]/60 flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <p className="font-bold text-[#DC2626]">-{formatRupiah(k.amount)}</p>
+                          <p className="text-[10px] text-[#64748B]">
+                            {k.notes || "Kasbon kasir"} · {formatTimeHHMM(k.date)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2 text-xs pt-0.5">
                 <div className="flex items-center justify-between">
@@ -1163,6 +1232,7 @@ export function CapsterClient({
           ownerPct={commissionModal.ownerPct}
           commissionPct={commissionModal.commissionPct}
           showCapsterColumn={commissionModal.showCapsterColumn}
+          kasbonTotal={commissionModal.kasbonTotal}
           packageBreakdown={commissionModal.packageBreakdown}
           haircutHistory={commissionModal.haircutHistory}
           fullExportPayload={commissionModal.fullExportPayload}

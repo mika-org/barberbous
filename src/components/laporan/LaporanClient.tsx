@@ -37,6 +37,8 @@ interface ReportStatItem {
   ownerPct?: number;
   commissionAmount?: number;
   ownerShareAmount?: number;
+  kasbonAmount?: number;
+  netCommissionAmount?: number;
   contributionPct: number;
   packageBreakdown?: PackageCommissionRow[];
   haircutHistory?: HaircutCommissionHistoryItem[];
@@ -65,6 +67,8 @@ interface ReportData {
     drinkSoldTotal: number;
     totalOwnerPackageShare: number;
     totalCapsterShare: number;
+    totalKasbonShare?: number;
+    netCapsterShare?: number;
     totalOwnerGross: number;
     totalExpenses: number;
     cashExpensesTotal: number;
@@ -82,6 +86,7 @@ interface ReportData {
   allCapstersBreakdown?: {
     packageBreakdown: PackageCommissionRow[];
     haircutHistory: HaircutCommissionHistoryItem[];
+    totalKasbon?: number;
   };
   transactionLines?: ReconciliationDetailLine[];
   paymentSplit: {
@@ -136,6 +141,8 @@ interface ReportData {
     ownerPct?: number;
     commissionAmount?: number;
     ownerShareAmount?: number;
+    kasbonAmount?: number;
+    netCommissionAmount?: number;
     revenuePct: number;
     sold: number;
     totalSoldAll: number;
@@ -174,6 +181,7 @@ export function LaporanClient({
     ownerPct: number;
     commissionPct: number;
     showCapsterColumn: boolean;
+    kasbonTotal?: number;
     packageBreakdown: PackageCommissionRow[];
     haircutHistory: HaircutCommissionHistoryItem[];
     fullExportPayload?: CapsterFinancialExportPayload;
@@ -238,6 +246,8 @@ export function LaporanClient({
       drinkSoldTotal: report.summary.drinkSoldTotal,
       totalOwnerPackageShare: report.summary.totalOwnerPackageShare,
       totalCapsterShare: report.summary.totalCapsterShare,
+      totalKasbonShare: report.summary.totalKasbonShare ?? 0,
+      netCapsterShare: report.summary.netCapsterShare ?? (report.summary.totalCapsterShare - (report.summary.totalKasbonShare ?? 0)),
       totalExpenses: report.summary.totalExpenses,
       cashExpensesTotal: report.summary.cashExpensesTotal,
       qrisExpensesTotal: report.summary.qrisExpensesTotal ?? 0,
@@ -265,6 +275,8 @@ export function LaporanClient({
         commissionPct: c.commissionPct ?? 40,
         ownerShareAmount: c.ownerShareAmount ?? 0,
         commissionAmount: c.commissionAmount ?? 0,
+        kasbonAmount: c.kasbonAmount ?? 0,
+        netCommissionAmount: c.netCommissionAmount ?? ((c.commissionAmount ?? 0) - (c.kasbonAmount ?? 0)),
         packageBreakdown: c.packageBreakdown,
       })),
       packageStats: report.packageStats.map((p) => ({
@@ -1311,6 +1323,10 @@ export function LaporanClient({
                                 ownerPct: 60,
                                 commissionPct: 40,
                                 showCapsterColumn: true,
+                                kasbonTotal:
+                                  report.allCapstersBreakdown?.totalKasbon ??
+                                  report.summary.totalKasbonShare ??
+                                  0,
                                 packageBreakdown: report.allCapstersBreakdown!.packageBreakdown,
                                 haircutHistory: report.allCapstersBreakdown!.haircutHistory,
                                 fullExportPayload: buildFullExportPayload() ?? undefined,
@@ -1331,6 +1347,8 @@ export function LaporanClient({
                         <th className="py-3 px-5 text-right">Omzet Paket</th>
                         <th className="py-3 px-5 text-right">Bagian Owner (60%)</th>
                         <th className="py-3 px-5 text-right">Bagian Capster (40%)</th>
+                        <th className="py-3 px-5 text-right">Kasbon</th>
+                        <th className="py-3 px-5 text-right">Bersih Capster</th>
                         <th className="py-3 px-5">Porsi</th>
                         <th className="py-3 px-5 text-right">Rincian Paket</th>
                       </tr>
@@ -1346,6 +1364,7 @@ export function LaporanClient({
                               ownerPct: item.ownerPct ?? 60,
                               commissionPct: item.commissionPct ?? 40,
                               showCapsterColumn: false,
+                              kasbonTotal: item.kasbonAmount ?? 0,
                               packageBreakdown: item.packageBreakdown ?? [],
                               haircutHistory: item.haircutHistory ?? [],
                             })
@@ -1377,6 +1396,17 @@ export function LaporanClient({
                           <td className="py-3.5 px-5 text-right font-semibold tabular-nums text-[#15803D]">
                             {formatRupiah(item.commissionAmount ?? 0)}
                           </td>
+                          <td className="py-3.5 px-5 text-right font-medium tabular-nums text-[#DC2626]">
+                            {item.kasbonAmount && item.kasbonAmount > 0
+                              ? `-${formatRupiah(item.kasbonAmount)}`
+                              : "Rp 0"}
+                          </td>
+                          <td className="py-3.5 px-5 text-right font-bold tabular-nums text-[#15803D]">
+                            {formatRupiah(
+                              item.netCommissionAmount ??
+                                ((item.commissionAmount ?? 0) - (item.kasbonAmount ?? 0))
+                            )}
+                          </td>
                           <td className="py-3.5 px-5">
                             <div className="flex items-center gap-2.5">
                               <div className="w-20 h-1.5 rounded-full bg-[#F1F5F9] overflow-hidden">
@@ -1401,6 +1431,7 @@ export function LaporanClient({
                                   ownerPct: item.ownerPct ?? 60,
                                   commissionPct: item.commissionPct ?? 40,
                                   showCapsterColumn: false,
+                                  kasbonTotal: item.kasbonAmount ?? 0,
                                   packageBreakdown: item.packageBreakdown ?? [],
                                   haircutHistory: item.haircutHistory ?? [],
                                 });
@@ -1441,6 +1472,25 @@ export function LaporanClient({
                             )
                           )}
                         </td>
+                        <td className="py-3.5 px-5 text-right tabular-nums text-[#DC2626]">
+                          -{formatRupiah(
+                            report.capsterStats.reduce(
+                              (s, c) => s + (c.kasbonAmount ?? 0),
+                              0
+                            )
+                          )}
+                        </td>
+                        <td className="py-3.5 px-5 text-right tabular-nums text-[#15803D]">
+                          {formatRupiah(
+                            report.capsterStats.reduce(
+                              (s, c) =>
+                                s +
+                                (c.netCommissionAmount ??
+                                  ((c.commissionAmount ?? 0) - (c.kasbonAmount ?? 0))),
+                              0
+                            )
+                          )}
+                        </td>
                         <td className="py-3.5 px-5">
                           <span className="text-[11px]">100%</span>
                         </td>
@@ -1455,6 +1505,10 @@ export function LaporanClient({
                                   ownerPct: 60,
                                   commissionPct: 40,
                                   showCapsterColumn: true,
+                                  kasbonTotal:
+                                    report.allCapstersBreakdown?.totalKasbon ??
+                                    report.summary.totalKasbonShare ??
+                                    0,
                                   packageBreakdown: report.allCapstersBreakdown!.packageBreakdown,
                                   haircutHistory: report.allCapstersBreakdown!.haircutHistory,
                                   fullExportPayload: buildFullExportPayload() ?? undefined,
@@ -1502,7 +1556,11 @@ export function LaporanClient({
                       <p className="text-xl font-bold text-[#15803D] mt-1 tabular-nums">
                         {formatRupiah(report.capsterDetail.commissionAmount ?? 0)}
                       </p>
-                      <p className="text-[11px] text-[#64748B] mt-1">Komisi bersih capster</p>
+                      <p className="text-[11px] text-[#64748B] mt-1">
+                        {(report.capsterDetail.kasbonAmount ?? 0) > 0
+                          ? `Kasbon: -${formatRupiah(report.capsterDetail.kasbonAmount ?? 0)} · Bersih: ${formatRupiah(report.capsterDetail.netCommissionAmount ?? ((report.capsterDetail.commissionAmount ?? 0) - (report.capsterDetail.kasbonAmount ?? 0)))}`
+                          : "Komisi bersih capster"}
+                      </p>
                     </div>
                     <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
                       <p className="text-[11px] text-[#64748B]">Paket terbanyak</p>
@@ -1536,6 +1594,7 @@ export function LaporanClient({
                             ownerPct: report.capsterDetail!.ownerPct ?? 60,
                             commissionPct: report.capsterDetail!.commissionPct ?? 40,
                             showCapsterColumn: false,
+                            kasbonTotal: report.capsterDetail!.kasbonAmount ?? 0,
                             packageBreakdown: report.capsterDetail!.packageBreakdown ?? [],
                             haircutHistory: report.capsterDetail!.haircutHistory ?? [],
                           })
@@ -1597,6 +1656,7 @@ export function LaporanClient({
           ownerPct={commissionModal.ownerPct}
           commissionPct={commissionModal.commissionPct}
           showCapsterColumn={commissionModal.showCapsterColumn}
+          kasbonTotal={commissionModal.kasbonTotal}
           packageBreakdown={commissionModal.packageBreakdown}
           haircutHistory={commissionModal.haircutHistory}
           fullExportPayload={commissionModal.fullExportPayload}

@@ -147,6 +147,7 @@ model Capster {
   bookings       Booking[]
   transactions   Transaction[]
   activeServices ActiveService[]
+  kasbons        Kasbon[]
 
   @@schema("barberbous")
 }
@@ -238,6 +239,23 @@ model CashShift {
   openedAt            DateTime      @default(now())
   closedAt            DateTime?
   expenses            CashExpense[]
+  kasbons             Kasbon[]
+
+  @@schema("barberbous")
+}
+
+model Kasbon {
+  id          String     @id @default(cuid())
+  capsterId   String
+  capster     Capster    @relation(fields: [capsterId], references: [id], onDelete: Cascade)
+  amount      Int
+  date        DateTime   @default(now())
+  notes       String?
+  shiftId     String?
+  shift       CashShift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  createdBy   String     @default("Kasir")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@schema("barberbous")
 }

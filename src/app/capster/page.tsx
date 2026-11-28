@@ -19,7 +19,7 @@ async function CapsterDataLoader() {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-  const [user, setting, capsters, packages, drinks, todayTx, todayExpenses, bookings] =
+  const [user, setting, capsters, packages, drinks, todayTx, todayExpenses, bookings, todayKasbons] =
     await Promise.all([
       getCurrentUser(),
       prisma.storeSetting.findUnique({ where: { id: "default" } }),
@@ -48,6 +48,10 @@ async function CapsterDataLoader() {
         where: { status: { in: ["HADIR", "MENUNGGU"] } },
         include: { package: true },
         orderBy: { scheduledTime: "asc" },
+      }),
+      prisma.kasbon.findMany({
+        where: { date: { gte: todayStart, lte: todayEnd } },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       }),
     ]);
 
@@ -212,6 +216,10 @@ async function CapsterDataLoader() {
     const topPackage =
       [...packageBreakdown].sort((a, b) => b.sold - a.sold)[0]?.packageName ?? "Basic";
 
+    const capKasbons = todayKasbons.filter((k) => k.capsterId === c.id);
+    const todayKasbon = capKasbons.reduce((s, k) => s + k.amount, 0);
+    const todayNetCommission = todayCommission - todayKasbon;
+
     const sharePct = totalRevenueAll > 0 ? Math.round((revenue / totalRevenueAll) * 100) : 0;
     const schedule = bookings
       .filter((b) => b.capsterId === c.id)
@@ -240,6 +248,8 @@ async function CapsterDataLoader() {
       todayRevenue: revenue,
       todayPackageRevenue: pkgRevenue,
       todayCommission,
+      todayKasbon,
+      todayNetCommission,
       todayOwnerShare,
       todayServices: servicesCount,
       sharePct,
@@ -247,12 +257,21 @@ async function CapsterDataLoader() {
       schedule,
       packageBreakdown,
       haircutHistory: capPkgLines,
+      kasbons: capKasbons.map((k) => ({
+        id: k.id,
+        amount: k.amount,
+        date: k.date.toISOString(),
+        notes: k.notes,
+        createdBy: k.createdBy,
+      })),
     };
   });
 
+  const totalKasbonToday = todayKasbons.reduce((s, k) => s + k.amount, 0);
   const allCapstersBreakdown = {
     packageBreakdown: buildPkgBreakdown(allPackageLines),
     haircutHistory: allPackageLines,
+    totalKasbon: totalKasbonToday,
   };
 
   const exportCapsterRows = enriched.map((c) => ({
@@ -264,6 +283,8 @@ async function CapsterDataLoader() {
     commissionPct: c.commissionPct,
     ownerShareAmount: c.todayOwnerShare,
     commissionAmount: c.todayCommission,
+    kasbonAmount: c.todayKasbon,
+    netCommissionAmount: c.todayNetCommission,
     packageBreakdown: c.packageBreakdown,
   }));
 
@@ -280,6 +301,8 @@ async function CapsterDataLoader() {
       commissionPct: 40,
       ownerShareAmount: unassignedPkgLines.reduce((s, l) => s + l.ownerShare, 0),
       commissionAmount: unassignedPkgLines.reduce((s, l) => s + l.capsterCommission, 0),
+      kasbonAmount: 0,
+      netCommissionAmount: unassignedPkgLines.reduce((s, l) => s + l.capsterCommission, 0),
       packageBreakdown: buildPkgBreakdown(unassignedPkgLines),
     });
   }

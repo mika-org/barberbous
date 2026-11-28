@@ -239,3 +239,10 @@ export const staffUpdateSchema = z.object({
   role: z.enum(["Owner", "Admin", "Kasir"]).optional(),
   isActive: z.boolean().optional(),
 });
+
+export const kasbonCreateSchema = z.object({
+  capsterId: z.string().min(1, "Capster wajib dipilih"),
+  amount: z.coerce.number().int().min(1000, "Nominal kasbon minimal Rp 1.000"),
+  date: z.string().optional(),
+  notes: z.string().trim().max(300).optional().nullable(),
+});

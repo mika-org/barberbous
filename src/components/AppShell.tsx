@@ -170,17 +170,26 @@ export function AppShell({
               <p className="text-[#64748B]">
                 @{user?.username ?? "rehan"} · {user?.role ?? "Kasir"}
               </p>
-              <div className="mt-2 pt-2 border-t border-[#F1F5F9] flex items-center justify-between">
-                <span className="text-[11px] text-[#15803D] font-medium">● Aktif</span>
-                <button
-                  type="button"
-                  disabled={loggingOut}
-                  onClick={handleLogout}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#DC2626] hover:text-[#B91C1C] cursor-pointer"
+              <div className="mt-2 pt-2 border-t border-[#F1F5F9] flex flex-col gap-2">
+                <Link
+                  href="/landing"
+                  target="_blank"
+                  className="text-[11px] font-medium text-[#2563EB] hover:underline"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
-                  {loggingOut ? "Keluar..." : "Keluar"}
-                </button>
+                  🌐 Lihat Landing Page
+                </Link>
+                <div className="flex items-center justify-between pt-1 border-t border-[#F1F5F9]">
+                  <span className="text-[11px] text-[#15803D] font-medium">● Aktif</span>
+                  <button
+                    type="button"
+                    disabled={loggingOut}
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#DC2626] hover:text-[#B91C1C] cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    {loggingOut ? "Keluar..." : "Keluar"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

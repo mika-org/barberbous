@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     const prevStart = new Date(start.getTime() - durationMs);
     const prevEnd = new Date(start.getTime() - 1);
 
-    const [transactions, prevTransactions, expenses, packages, drinks, capsters] =
+    const [transactions, prevTransactions, expenses, packages, drinks, capsters, kasbons] =
       await Promise.all([
         prisma.transaction.findMany({
           where: {
@@ -70,6 +70,12 @@ export async function GET(req: NextRequest) {
         prisma.package.findMany({ orderBy: { sortOrder: "asc" } }),
         prisma.drink.findMany({ orderBy: { sortOrder: "asc" } }),
         prisma.capster.findMany({ orderBy: { sortOrder: "asc" } }),
+        prisma.kasbon.findMany({
+          where: {
+            date: { gte: start, lte: end },
+          },
+          orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        }),
       ]);
 
     const totalRevenue = transactions.reduce((sum, t) => sum + t.total, 0);
@@ -284,6 +290,10 @@ export async function GET(req: NextRequest) {
       const commissionAmount = capPkgLines.reduce((s, l) => s + l.capsterCommission, 0);
       const ownerShareAmount = capPkgLines.reduce((s, l) => s + l.ownerShare, 0);
 
+      const capKasbons = kasbons.filter((k) => k.capsterId === c.id);
+      const kasbonAmount = capKasbons.reduce((s, k) => s + k.amount, 0);
+      const netCommissionAmount = commissionAmount - kasbonAmount;
+
       return {
         id: c.id,
         name: c.name,
@@ -294,6 +304,8 @@ export async function GET(req: NextRequest) {
         ownerPct: 100 - c.commissionPct,
         commissionAmount,
         ownerShareAmount,
+        kasbonAmount,
+        netCommissionAmount,
         contributionPct: packageRevenue > 0 ? Math.round((pkgRevForCapster / packageRevenue) * 100) : 0,
         packageBreakdown: buildPackageCommissionBreakdown(capPkgLines),
         haircutHistory: capPkgLines.slice(0, 200),
@@ -318,18 +330,24 @@ export async function GET(req: NextRequest) {
         ownerPct: 60,
         commissionAmount: uComm,
         ownerShareAmount: uOwn,
+        kasbonAmount: 0,
+        netCommissionAmount: uComm,
         contributionPct: packageRevenue > 0 ? Math.round((uPkgRev / packageRevenue) * 100) : 0,
         packageBreakdown: buildPackageCommissionBreakdown(unassignedPkgLines),
         haircutHistory: unassignedPkgLines.slice(0, 200),
       });
     }
 
+    const totalKasbonShare = kasbons.reduce((s, k) => s + k.amount, 0);
+
     const allCapstersBreakdown = {
       packageBreakdown: buildPackageCommissionBreakdown(packageLines),
       haircutHistory: packageLines.slice(0, 500),
+      totalKasbon: totalKasbonShare,
     };
 
     const totalCapsterShare = packageLines.reduce((s, l) => s + l.capsterCommission, 0);
+    const netCapsterShare = totalCapsterShare - totalKasbonShare;
     const totalOwnerPackageShare = packageLines.reduce((s, l) => s + l.ownerShare, 0);
 
     const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
@@ -482,6 +500,10 @@ export async function GET(req: NextRequest) {
         const capCommission = capLines.reduce((s, l) => s + l.capsterCommission, 0);
         const capOwnerShare = capLines.reduce((s, l) => s + l.ownerShare, 0);
 
+        const capKas = kasbons.filter((k) => k.capsterId === selectedCap.id);
+        const capKasbonAmount = capKas.reduce((s, k) => s + k.amount, 0);
+        const capNetCommission = capCommission - capKasbonAmount;
+
         capsterDetail = {
           capster: selectedCap,
           revenue: capRevenue,
@@ -490,6 +512,9 @@ export async function GET(req: NextRequest) {
           ownerPct: 100 - selectedCap.commissionPct,
           commissionAmount: capCommission,
           ownerShareAmount: capOwnerShare,
+          kasbonAmount: capKasbonAmount,
+          netCommissionAmount: capNetCommission,
+          kasbons: capKas,
           revenuePct: totalRevenue > 0 ? Math.round((capRevenue / totalRevenue) * 100) : 0,
           sold: capSold,
           totalSoldAll: packageSoldTotal,
@@ -524,6 +549,8 @@ export async function GET(req: NextRequest) {
           kafeSoldTotal: drinkSoldTotal,
           totalOwnerPackageShare,
           totalCapsterShare,
+          totalKasbonShare,
+          netCapsterShare,
           totalOwnerGross,
           totalExpenses,
           cashExpensesTotal,

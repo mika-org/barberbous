@@ -41,6 +41,7 @@ interface CapsterCommissionModalProps {
   ownerPct?: number;
   commissionPct?: number;
   showCapsterColumn?: boolean;
+  kasbonTotal?: number;
   packageBreakdown: PackageCommissionRow[];
   haircutHistory: HaircutCommissionHistoryItem[];
   fullExportPayload?: CapsterFinancialExportPayload;
@@ -53,6 +54,7 @@ export function CapsterCommissionModal({
   ownerPct = 60,
   commissionPct = 40,
   showCapsterColumn = false,
+  kasbonTotal = 0,
   packageBreakdown,
   haircutHistory,
   fullExportPayload,
@@ -62,6 +64,7 @@ export function CapsterCommissionModal({
   const totalGross = packageBreakdown.reduce((s, r) => s + r.grossAmount, 0);
   const totalOwner = packageBreakdown.reduce((s, r) => s + r.ownerShareAmount, 0);
   const totalCapster = packageBreakdown.reduce((s, r) => s + r.commissionAmount, 0);
+  const netCapster = totalCapster - kasbonTotal;
 
   const handleDownloadWorkbook = () => {
     if (fullExportPayload) {
@@ -143,13 +146,24 @@ export function CapsterCommissionModal({
             </div>
 
             <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-2xl p-3.5">
-              <p className="text-[11px] font-semibold text-[#15803D]">
-                Komisi / Gaji Capster ({commissionPct}%)
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-[#15803D]">
+                  Komisi Capster ({commissionPct}%)
+                </p>
+                {kasbonTotal > 0 && (
+                  <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
+                    Kasbon -{formatRupiah(kasbonTotal)}
+                  </span>
+                )}
+              </div>
               <p className="text-lg font-bold text-[#15803D] mt-1 tabular-nums">
-                {formatRupiah(totalCapster)}
+                {formatRupiah(netCapster)}
               </p>
-              <p className="text-[11px] text-[#15803D]/80 mt-0.5">Komisi bersih bagi hasil</p>
+              <p className="text-[11px] text-[#15803D]/80 mt-0.5">
+                {kasbonTotal > 0
+                  ? `Kotor: ${formatRupiah(totalCapster)} · Potong Kasbon: ${formatRupiah(kasbonTotal)}`
+                  : "Komisi bersih bagi hasil"}
+              </p>
             </div>
           </div>
 

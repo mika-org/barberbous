@@ -32,6 +32,7 @@ interface ShiftSummary {
   nonCashSalesTotal: number;
   cashTxCount: number;
   expensesTotal: number;
+  kasbonsTotal?: number;
   expectedCash: number;
 }
 
@@ -351,6 +352,14 @@ export function ShiftModal({
                   -{formatRupiah(summary.expensesTotal)}
                 </p>
               </div>
+              {(summary.kasbonsTotal ?? 0) > 0 ? (
+                <div className="border border-[#FEE2E2] bg-[#FEF2F2] rounded-xl p-3">
+                  <p className="text-[11px] text-[#DC2626]">Kasbon Capster</p>
+                  <p className="text-sm font-bold text-[#DC2626] mt-0.5 tabular-nums">
+                    -{formatRupiah(summary.kasbonsTotal ?? 0)}
+                  </p>
+                </div>
+              ) : null}
               <div className="bg-[#0F172A] text-white rounded-xl p-3">
                 <p className="text-[11px] text-[#94A3B8]">Uang Seharusnya di Laci</p>
                 <p className="text-sm font-bold mt-0.5 tabular-nums">

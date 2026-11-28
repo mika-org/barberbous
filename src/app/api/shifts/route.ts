@@ -9,12 +9,23 @@ export async function GET() {
     const [activeShift, recentShifts] = await Promise.all([
       prisma.cashShift.findFirst({
         where: { status: "OPEN" },
-        include: { expenses: { orderBy: { createdAt: "desc" } } },
+        include: {
+          expenses: { orderBy: { createdAt: "desc" } },
+          kasbons: {
+            include: { capster: { select: { id: true, name: true, code: true } } },
+            orderBy: { createdAt: "desc" },
+          },
+        },
         orderBy: { openedAt: "desc" },
       }),
       prisma.cashShift.findMany({
         where: { status: "CLOSED" },
-        include: { expenses: true },
+        include: {
+          expenses: true,
+          kasbons: {
+            include: { capster: { select: { id: true, name: true, code: true } } },
+          },
+        },
         orderBy: { closedAt: "desc" },
         take: 10,
       }),
@@ -46,8 +57,11 @@ export async function GET() {
     const expensesTotal = activeShift
       ? activeShift.expenses.reduce((sum, e) => sum + e.amount, 0)
       : 0;
+    const kasbonsTotal = activeShift
+      ? activeShift.kasbons.reduce((sum, k) => sum + k.amount, 0)
+      : 0;
     const expectedCash = activeShift
-      ? activeShift.openingCash + cashSalesTotal - expensesTotal
+      ? activeShift.openingCash + cashSalesTotal - expensesTotal - kasbonsTotal
       : 0;
 
     return NextResponse.json({
@@ -58,6 +72,7 @@ export async function GET() {
           nonCashSalesTotal,
           cashTxCount,
           expensesTotal,
+          kasbonsTotal,
           expectedCash,
         },
         recentShifts,

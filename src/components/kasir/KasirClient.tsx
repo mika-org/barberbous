@@ -20,6 +20,7 @@ import {
   Sparkles,
   Play,
   MessageCircle,
+  HandCoins,
 } from "lucide-react";
 import { formatDateHeader, formatRupiah, formatTimeHHMM, getInitials } from "@/lib/format";
 import { DiskonModal, type DiscountState } from "./DiskonModal";
@@ -27,6 +28,7 @@ import { PembayaranModal } from "./PembayaranModal";
 import { PelangganModal, type PosMember } from "./PelangganModal";
 import { BookingAddModal } from "./BookingAddModal";
 import { ShiftModal } from "./ShiftModal";
+import { KasbonModal } from "./KasbonModal";
 import { type ReceiptStoreInfo, type ReceiptTransaction } from "../ReceiptModal";
 
 export interface PosPackage {
@@ -170,6 +172,7 @@ export function KasirClient({
   const [notes, setNotes] = useState<string>("");
 
   // Modals & mobile panel
+  const [showKasbonModal, setShowKasbonModal] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [showPelangganModal, setShowPelangganModal] = useState(false);
   const [showDiskonModal, setShowDiskonModal] = useState(false);
@@ -595,6 +598,16 @@ export function KasirClient({
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {/* Kasbon Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowKasbonModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] px-3 py-2 text-xs font-semibold shrink-0 text-[#0F172A] shadow-xs transition cursor-pointer"
+            >
+              <HandCoins className="w-3.5 h-3.5 text-[#B45309]" />
+              <span>Kasbon</span>
+            </button>
+
             {/* Shift / Cash Drawer Trigger */}
             <button
               type="button"
@@ -1678,6 +1691,14 @@ export function KasirClient({
           capsters={capsters}
           onCreated={refreshBookings}
           onClose={() => setShowBookingAddModal(false)}
+        />
+      )}
+
+      {showKasbonModal && (
+        <KasbonModal
+          capsters={capsters}
+          onSuccess={(msg) => showToast(msg)}
+          onClose={() => setShowKasbonModal(false)}
         />
       )}
 

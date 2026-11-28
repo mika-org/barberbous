@@ -123,6 +123,15 @@ export default function LoginPage() {
             {loading ? "Memverifikasi..." : "Masuk"}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <a
+            href="/landing"
+            className="text-[11px] font-medium text-[#64748B] hover:text-[#0F172A] transition"
+          >
+            ← Kembali ke Landing Page
+          </a>
+        </div>
       </div>
     </div>
   );

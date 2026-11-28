@@ -13,6 +13,8 @@ export interface ReconciliationCapsterRow {
   commissionPct: number;
   ownerShareAmount: number;
   commissionAmount: number;
+  kasbonAmount?: number;
+  netCommissionAmount?: number;
   packageBreakdown?: PackageCommissionRow[];
 }
 
@@ -65,6 +67,8 @@ export interface CapsterFinancialExportPayload {
   drinkSoldTotal: number;
   totalOwnerPackageShare: number;
   totalCapsterShare: number;
+  totalKasbonShare?: number;
+  netCapsterShare?: number;
   totalExpenses: number;
   cashExpensesTotal: number;
   qrisExpensesTotal: number;
